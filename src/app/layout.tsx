@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { HeaderUser } from "./_components/HeaderUser";
 import { HeaderNav } from "./_components/HeaderNav";
+import { NowPlaying } from "./_components/NowPlaying";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,6 +50,7 @@ export default function RootLayout({
           </div>
         </header>
         <main className="flex flex-1 flex-col">{children}</main>
+        <NowPlaying />
       </body>
     </html>
   );

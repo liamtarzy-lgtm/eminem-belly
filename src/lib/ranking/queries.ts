@@ -5,6 +5,7 @@ import { rankToScore } from "@/lib/score";
 export type RankedSong = {
   rankingId: number;
   position: number;
+  tiedWithSongId: number | null;
   song: typeof schema.songs.$inferSelect;
 };
 
@@ -13,6 +14,7 @@ export async function getRanking(userId: string): Promise<RankedSong[]> {
     .select({
       rankingId: schema.rankings.id,
       position: schema.rankings.position,
+      tiedWithSongId: schema.rankings.tiedWithSongId,
       song: schema.songs,
     })
     .from(schema.rankings)
@@ -20,6 +22,30 @@ export async function getRanking(userId: string): Promise<RankedSong[]> {
     .where(eq(schema.rankings.userId, userId))
     .orderBy(asc(schema.rankings.position))
     .all();
+}
+
+// Walks a position-sorted ranking and assigns each entry a display rank.
+// Adjacent entries marked tied (via tied_with_song_id pointing at each other)
+// share the same display rank — matches Beli's "too tough" semantics.
+export type RankedSongWithDisplay = RankedSong & { displayRank: number };
+
+export function withDisplayRanks(items: RankedSong[]): RankedSongWithDisplay[] {
+  const out: RankedSongWithDisplay[] = [];
+  let prevDisplayRank = 0;
+  let prevSongId: number | null = null;
+  let prevTied: number | null = null;
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i];
+    const tiedToPrev =
+      prevSongId !== null &&
+      (r.tiedWithSongId === prevSongId || prevTied === r.song.id);
+    const displayRank = tiedToPrev ? prevDisplayRank : i + 1;
+    out.push({ ...r, displayRank });
+    prevDisplayRank = displayRank;
+    prevSongId = r.song.id;
+    prevTied = r.tiedWithSongId;
+  }
+  return out;
 }
 
 export async function getSongAtPosition(userId: string, position: number) {
@@ -229,6 +255,71 @@ export async function getAlbumRankings(userId: string): Promise<AlbumRanking[]> 
   return result;
 }
 
+// Title patterns that mark a track as not worth ranking (skits, intros, etc).
+// Applied at query time so we don't have to delete data.
+const NOT_A_SONG_PATTERN = sql`(
+  ${schema.songs.title} LIKE '%(skit)%'
+  OR ${schema.songs.title} LIKE '%[skit]%'
+  OR ${schema.songs.title} LIKE '%(intro)%'
+  OR ${schema.songs.title} LIKE '%(outro)%'
+  OR ${schema.songs.title} LIKE '%(interlude)%'
+  OR lower(${schema.songs.title}) LIKE '%- intro%'
+  OR lower(${schema.songs.title}) LIKE '%- outro%'
+  OR lower(${schema.songs.title}) LIKE '%- skit%'
+  OR lower(${schema.songs.title}) = 'intro'
+  OR lower(${schema.songs.title}) = 'outro'
+  OR lower(${schema.songs.title}) = 'skit'
+  OR lower(${schema.songs.title}) = 'interlude'
+  OR (${schema.songs.durationMs} IS NOT NULL AND ${schema.songs.durationMs} < 60000)
+)`;
+
+// ─── Saved songs ───────────────────────────────────────────────────────
+export type SavedSongRow = {
+  savedId: number;
+  song: typeof schema.songs.$inferSelect;
+  createdAt: Date;
+};
+
+export async function getSavedSongs(userId: string): Promise<SavedSongRow[]> {
+  return db
+    .select({
+      savedId: schema.savedSongs.id,
+      song: schema.songs,
+      createdAt: schema.savedSongs.createdAt,
+    })
+    .from(schema.savedSongs)
+    .innerJoin(schema.songs, eq(schema.songs.id, schema.savedSongs.songId))
+    .where(eq(schema.savedSongs.userId, userId))
+    .orderBy(desc(schema.savedSongs.createdAt))
+    .all();
+}
+
+export async function getSavedSongIds(userId: string): Promise<Set<number>> {
+  const rows = await db
+    .select({ songId: schema.savedSongs.songId })
+    .from(schema.savedSongs)
+    .where(eq(schema.savedSongs.userId, userId))
+    .all();
+  return new Set(rows.map((r) => r.songId));
+}
+
+export async function isSongSaved(
+  userId: string,
+  songId: number,
+): Promise<boolean> {
+  const row = await db
+    .select({ id: schema.savedSongs.id })
+    .from(schema.savedSongs)
+    .where(
+      and(
+        eq(schema.savedSongs.userId, userId),
+        eq(schema.savedSongs.songId, songId),
+      ),
+    )
+    .get();
+  return !!row;
+}
+
 export async function getRecommendation(
   userId: string,
   excludeSongIds: number[] = [],
@@ -238,20 +329,15 @@ export async function getRecommendation(
     .from(schema.rankings)
     .where(eq(schema.rankings.userId, userId));
 
-  const baseConditions = [notInArray(schema.songs.id, rankedSubquery)];
+  const baseConditions = [
+    notInArray(schema.songs.id, rankedSubquery),
+    sql`NOT ${NOT_A_SONG_PATTERN}`,
+  ];
   if (excludeSongIds.length) {
     baseConditions.push(notInArray(schema.songs.id, excludeSongIds));
   }
 
-  const primary = await db
-    .select()
-    .from(schema.songs)
-    .where(and(...baseConditions, eq(schema.songs.eminemRole, "primary")))
-    .orderBy(sql`random()`)
-    .limit(1)
-    .get();
-  if (primary) return primary;
-
+  // Truly random pick — features and deep cuts surface alongside primary tracks.
   return db
     .select()
     .from(schema.songs)

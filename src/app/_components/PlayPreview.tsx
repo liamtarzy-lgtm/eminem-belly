@@ -2,74 +2,87 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Module-level singleton: only one preview plays at a time across the page.
-let currentlyPlaying: HTMLAudioElement | null = null;
+// Module-level singleton: only one preview plays at a time. We also store
+// metadata so a sibling NowPlaying indicator can label the current track.
+type Current = {
+  audio: HTMLAudioElement;
+  meta: { songId: number; title: string; artist: string };
+};
+let current: Current | null = null;
 const subscribers = new Set<() => void>();
 function notifyAll() {
   for (const fn of subscribers) fn();
 }
 
+export function getCurrentPlaying(): Current["meta"] | null {
+  return current?.meta ?? null;
+}
+
+export function subscribePlaying(cb: () => void) {
+  subscribers.add(cb);
+  return () => {
+    subscribers.delete(cb);
+  };
+}
+
+export function stopPlayback() {
+  if (current) {
+    current.audio.pause();
+    current = null;
+    notifyAll();
+  }
+}
+
 type Props = {
-  /** The song id — the audio src points at /api/preview/[songId] which
-   *  resolves a fresh signed URL from Deezer at play time. */
   songId: number;
-  /** Whether we know the song has a preview available; if false, the button
-   *  is hidden so we don't show non-functional UI. */
   hasPreview: boolean;
-  /** Visual size of the round button. */
+  title: string;
+  artist: string;
   size?: "sm" | "md";
-  /** Extra classes for positioning (e.g. absolute placement). */
   className?: string;
 };
 
-export function PlayPreview({ songId, hasPreview, size = "md", className = "" }: Props) {
+export function PlayPreview({
+  songId,
+  hasPreview,
+  title,
+  artist,
+  size = "md",
+  className = "",
+}: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [, force] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const cb = () => force((n) => n + 1);
-    subscribers.add(cb);
-    return () => {
-      subscribers.delete(cb);
-    };
+    return subscribePlaying(() => force((n) => n + 1));
   }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onEnded = () => {
-      if (currentlyPlaying === audio) currentlyPlaying = null;
+    const onEnd = () => {
+      if (current?.audio === audio) current = null;
       setLoading(false);
       notifyAll();
     };
-    const onPause = () => {
-      if (currentlyPlaying === audio) currentlyPlaying = null;
-      setLoading(false);
-      notifyAll();
-    };
-    const onError = () => {
-      setLoading(false);
-      if (currentlyPlaying === audio) currentlyPlaying = null;
-      notifyAll();
-    };
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("error", onError);
+    audio.addEventListener("ended", onEnd);
+    audio.addEventListener("pause", onEnd);
+    audio.addEventListener("error", onEnd);
     return () => {
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("error", onError);
-      if (currentlyPlaying === audio) {
+      audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("pause", onEnd);
+      audio.removeEventListener("error", onEnd);
+      if (current?.audio === audio) {
         audio.pause();
-        currentlyPlaying = null;
+        current = null;
       }
     };
   }, []);
 
   if (!hasPreview) return null;
 
-  const playing = currentlyPlaying === audioRef.current && audioRef.current !== null;
+  const playing = current?.audio === audioRef.current && audioRef.current !== null;
   const dim = size === "sm" ? "h-7 w-7 text-xs" : "h-10 w-10 text-base sm:h-12 sm:w-12";
 
   const toggle = (e: React.MouseEvent | React.PointerEvent) => {
@@ -77,25 +90,25 @@ export function PlayPreview({ songId, hasPreview, size = "md", className = "" }:
     e.stopPropagation();
     const audio = audioRef.current;
     if (!audio) return;
-    if (currentlyPlaying === audio) {
+    if (current?.audio === audio) {
       audio.pause();
-      currentlyPlaying = null;
+      current = null;
       notifyAll();
       return;
     }
-    if (currentlyPlaying) currentlyPlaying.pause();
+    if (current) current.audio.pause();
     setLoading(true);
     audio.src = `/api/preview/${songId}?t=${Date.now()}`;
     audio.currentTime = 0;
     audio
       .play()
       .then(() => {
-        currentlyPlaying = audio;
+        current = { audio, meta: { songId, title, artist } };
         setLoading(false);
         notifyAll();
       })
       .catch(() => {
-        currentlyPlaying = null;
+        current = null;
         setLoading(false);
         notifyAll();
       });
@@ -105,7 +118,7 @@ export function PlayPreview({ songId, hasPreview, size = "md", className = "" }:
 
   return (
     <>
-      <audio ref={audioRef} preload="none" crossOrigin="anonymous" />
+      <audio ref={audioRef} preload="none" />
       <button
         type="button"
         onClick={toggle}

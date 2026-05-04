@@ -8,12 +8,19 @@ import {
   undoLastForm,
   hasUndoTarget,
 } from "@/lib/ranking/actions";
+import { getCurrentUserId } from "@/lib/session";
+import { getSavedSongIds } from "@/lib/ranking/queries";
 import { SongImage } from "./_components/SongImage";
 import { PlayPreview } from "./_components/PlayPreview";
+import { SaveButton } from "./_components/SaveButton";
 
 export default async function HomePage() {
   const step = await getOrStartNextStep();
-  const canUndo = await hasUndoTarget();
+  const userId = await getCurrentUserId();
+  const [canUndo, savedIds] = await Promise.all([
+    hasUndoTarget(),
+    getSavedSongIds(userId),
+  ]);
 
   if (!step) {
     return (
@@ -53,11 +60,11 @@ export default async function HomePage() {
                 type="submit"
                 className="flex items-center gap-1 rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-xs font-medium text-(--muted) hover:border-(--accent-soft) hover:text-foreground"
               >
-                ↶ undo
+                ← back
               </button>
             </form>
           )}
-          <ProgressPill current={progress.current} max={progress.max} />
+          <ProgressBar current={progress.current} max={progress.max} />
         </div>
       </div>
 
@@ -71,6 +78,7 @@ export default async function HomePage() {
           opponentSongId={opponent.id}
           isTarget
           song={target}
+          isSaved={savedIds.has(target.id)}
         />
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
           <div className="flex h-10 w-10 items-center justify-center rounded-full border border-(--border) bg-(--background) text-[11px] font-bold uppercase tracking-wider text-(--accent-soft) shadow-lg sm:h-12 sm:w-12 sm:text-xs">
@@ -82,58 +90,27 @@ export default async function HomePage() {
           opponentSongId={opponent.id}
           isTarget={false}
           song={opponent}
+          isSaved={savedIds.has(opponent.id)}
         />
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm sm:gap-3">
-        <PillButton action={tooToughForm} sessionId={sessionId} opponentSongId={opponent.id} variant="primary">
-          ⚖ too tough
-        </PillButton>
-        <PillButton action={skipOpponentForm} sessionId={sessionId} opponentSongId={opponent.id}>
-          ? don&apos;t know
-        </PillButton>
-        <PillButton action={abandonAndNext} sessionId={sessionId}>
-          ↻ new matchup
-        </PillButton>
+      <div className="mt-5 flex items-center justify-center text-sm">
+        <form action={tooToughForm}>
+          <input type="hidden" name="sessionId" value={sessionId} />
+          <input type="hidden" name="opponentSongId" value={opponent.id} />
+          <button
+            type="submit"
+            className="flex items-center gap-1.5 rounded-full border border-(--accent)/50 bg-(--accent)/10 px-5 py-2 text-sm font-medium text-(--accent-soft) transition hover:border-(--accent) hover:bg-(--accent)/20 active:scale-95"
+          >
+            ⚖ too tough — call it a tie
+          </button>
+        </form>
       </div>
     </div>
   );
 }
 
-function PillButton({
-  action,
-  sessionId,
-  opponentSongId,
-  variant = "default",
-  children,
-}: {
-  action: (formData: FormData) => Promise<void>;
-  sessionId: number;
-  opponentSongId?: number;
-  variant?: "default" | "primary";
-  children: React.ReactNode;
-}) {
-  const styles =
-    variant === "primary"
-      ? "border-(--accent)/50 bg-(--accent)/10 text-(--accent-soft) hover:border-(--accent) hover:bg-(--accent)/20"
-      : "border-(--border) bg-(--surface) text-(--muted) hover:border-(--accent-soft) hover:text-foreground";
-  return (
-    <form action={action}>
-      <input type="hidden" name="sessionId" value={sessionId} />
-      {opponentSongId !== undefined && (
-        <input type="hidden" name="opponentSongId" value={opponentSongId} />
-      )}
-      <button
-        type="submit"
-        className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-medium transition active:scale-95 sm:text-sm ${styles}`}
-      >
-        {children}
-      </button>
-    </form>
-  );
-}
-
-function ProgressPill({ current, max }: { current: number; max: number }) {
+function ProgressBar({ current, max }: { current: number; max: number }) {
   const pct = Math.max(
     0,
     Math.min(100, ((current - 1) / Math.max(max, 1)) * 100),
@@ -141,7 +118,7 @@ function ProgressPill({ current, max }: { current: number; max: number }) {
   return (
     <div className="flex items-center gap-2">
       <div className="text-[10px] font-medium tabular-nums text-(--muted)">
-        Q{current}/{max}
+        comparison {current} of ~{max}
       </div>
       <div className="h-1 w-16 overflow-hidden rounded-full bg-(--surface-2) sm:w-24">
         <div
@@ -167,19 +144,48 @@ function ChoiceCard({
   opponentSongId,
   isTarget,
   song,
+  isSaved,
 }: {
   sessionId: number;
   opponentSongId: number;
   isTarget: boolean;
   song: SongLike;
+  isSaved: boolean;
 }) {
+  // Refreshing target = abandon current insertion + start a new one with a
+  // different song. Refreshing opponent = pick a different opponent in the
+  // same binary-search range (the existing skip behavior).
+  const refreshAction = isTarget ? abandonAndNext : skipOpponentForm;
+
   return (
     <div className="relative flex">
-      <PlayPreview
-        songId={song.id}
-        hasPreview={!!song.previewUrl}
-        className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4"
-      />
+      {/* Top-left: refresh icon — swap THIS card */}
+      <form action={refreshAction} className="absolute left-3 top-3 z-10 sm:left-4 sm:top-4">
+        <input type="hidden" name="sessionId" value={sessionId} />
+        {!isTarget && (
+          <input type="hidden" name="opponentSongId" value={opponentSongId} />
+        )}
+        <button
+          type="submit"
+          aria-label="Different song"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-black/65 text-white shadow-lg backdrop-blur transition hover:scale-110 hover:bg-black/85 active:scale-95"
+        >
+          ↻
+        </button>
+      </form>
+
+      {/* Top-right corner cluster: play + save */}
+      <div className="absolute right-3 top-3 z-10 flex flex-col gap-2 sm:right-4 sm:top-4">
+        <PlayPreview
+          key={song.id}
+          songId={song.id}
+          hasPreview={!!song.previewUrl}
+          title={song.title}
+          artist={song.primaryArtist}
+        />
+        <SaveButton songId={song.id} initialSaved={isSaved} size="sm" />
+      </div>
+
       <form action={submitChoiceForm} className="flex w-full">
         <input type="hidden" name="sessionId" value={sessionId} />
         <input type="hidden" name="opponentSongId" value={opponentSongId} />

@@ -1,6 +1,7 @@
 import { createDbClient } from "../src/db/client";
 import { songs, type NewSong } from "../src/db/schema";
-import { sql } from "drizzle-orm";
+import { sql, eq, and, or } from "drizzle-orm";
+import { canonicalAlbumName, isCompilationAlbum } from "../src/lib/album";
 
 const EMINEM_DEEZER_ID = 13;
 const EMINEM_MBID = "b95ce3ff-3d05-4e87-9e01-c97b66af13d4";
@@ -115,70 +116,94 @@ async function pullDeezerPrimary(): Promise<NewSong[]> {
   }
   console.log(`  raw album count: ${albums.length}`);
 
-  // Keep albums + EPs, drop pure singles for now (we'll catch single tracks via top tracks pass too)
-  const goodAlbums = albums.filter(
-    (a) => a.record_type === "album" || a.record_type === "ep",
+  // Sort albums chronologically (earliest first) so the original studio
+  // version of any track is processed before later compilations / re-issues.
+  const sortedAlbums = albums
+    .filter((a) => a.record_type === "album" || a.record_type === "ep")
+    .sort((a, b) => (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999"));
+
+  // Studio originals first; compilations only as fallback for tracks that
+  // never appeared on a studio album (FACK, Everybody Looks at Me, etc.).
+  const studioAlbums = sortedAlbums.filter(
+    (a) => !isCompilationAlbum(a.record_type, a.title),
+  );
+  const compAlbums = sortedAlbums.filter((a) =>
+    isCompilationAlbum(a.record_type, a.title),
+  );
+  console.log(
+    `  studio: ${studioAlbums.length}  compilations (fallback): ${compAlbums.length}`,
   );
 
-  console.log(`  after type filter (album/ep): ${goodAlbums.length}`);
-  console.log("→ [Deezer] Fetching tracklists...");
-
-  const allTracks: DzTrack[] = [];
+  console.log("→ [Deezer] Fetching tracklists (studio first, comps last)...");
+  const orderedAlbums = [...studioAlbums, ...compAlbums];
+  const tracksFromAlbum = new Map<number, DzTrack[]>();
   let i = 0;
-  for (const album of goodAlbums) {
+  for (const album of orderedAlbums) {
     i++;
-    process.stdout.write(`\r  album ${i}/${goodAlbums.length}: ${album.title.slice(0, 50)}                    `);
+    process.stdout.write(
+      `\r  album ${i}/${orderedAlbums.length}: ${album.title.slice(0, 50)}                    `,
+    );
     try {
       const detail = await dzFetch<DzAlbumDetail>(`/album/${album.id}`);
       const tracks = detail.tracks?.data ?? [];
-      // Walk pagination if present
       let nextUrl = detail.tracks?.next;
       while (nextUrl) {
         const page = await dzFetch<DzSearch>(nextUrl);
         tracks.push(...page.data);
         nextUrl = page.next;
       }
-      allTracks.push(...tracks);
+      tracksFromAlbum.set(album.id, tracks);
     } catch (e) {
-      console.warn(`\n  ! album ${album.id} (${album.title}) failed:`, (e as Error).message);
+      console.warn(
+        `\n  ! album ${album.id} (${album.title}) failed:`,
+        (e as Error).message,
+      );
     }
   }
-  process.stdout.write(`\n  collected ${allTracks.length} raw tracks\n`);
+  process.stdout.write("\n");
 
-  // Dedupe: prefer ISRC, fall back to (normalized_title, normalized_artist)
-  // Keep the entry with the highest rank (most popular version)
-  const byKey = new Map<string, DzTrack>();
-  for (const t of allTracks) {
-    if (deezerJunk(t.title, t.title_version)) continue;
-    const titleKey = normalizeTitle(t.title);
-    if (!titleKey) continue;
-    const isrcKey = t.isrc?.trim() ? `isrc:${t.isrc.trim()}` : null;
-    const fallback = `${titleKey}|${normalizeArtist(t.artist.name)}`;
-    const key = isrcKey ?? fallback;
-    const existing = byKey.get(key);
-    if (!existing || (t.rank ?? 0) > (existing.rank ?? 0)) {
-      byKey.set(key, t);
+  // Walk albums in chronological order. First album to claim a song wins —
+  // so a track on both Encore (2004) and Curtain Call (2005) ends up
+  // attributed to Encore. Comps come last, so they only catch orphans.
+  const claimedByKey = new Map<string, { track: DzTrack; albumTitle: string }>();
+  for (const album of orderedAlbums) {
+    const tracks = tracksFromAlbum.get(album.id) ?? [];
+    const canonAlbum = canonicalAlbumName(album.title);
+    for (const t of tracks) {
+      if (deezerJunk(t.title, t.title_version)) continue;
+      const titleKey = normalizeTitle(t.title);
+      if (!titleKey) continue;
+      const isrcKey = t.isrc?.trim() ? `isrc:${t.isrc.trim()}` : null;
+      const fallback = `${titleKey}|${normalizeArtist(t.artist.name)}`;
+      const key = isrcKey ?? fallback;
+      if (claimedByKey.has(key)) continue; // earlier album wins
+      claimedByKey.set(key, { track: t, albumTitle: canonAlbum });
+      if (isrcKey && !claimedByKey.has(fallback)) {
+        claimedByKey.set(fallback, { track: t, albumTitle: canonAlbum });
+      }
     }
-    // Also index by fallback so cross-source dedup catches it later
-    if (isrcKey) byKey.set(fallback, byKey.get(key)!);
   }
-  // Re-collapse to unique tracks
-  const unique = new Set<DzTrack>();
-  for (const t of byKey.values()) unique.add(t);
 
-  const rows: NewSong[] = [...unique].map((t) => ({
-    musicbrainzId: null,
-    title: t.title,
-    primaryArtist: t.artist.name,
-    featuredArtists: [],
-    album: t.album.title,
-    releaseDate: null,
-    artUrl: t.album.cover_xl ?? t.album.cover_big ?? null,
-    previewUrl: t.preview ?? null,
-    deezerTrackId: t.id ?? null,
-    durationMs: t.duration ? t.duration * 1000 : null,
-    eminemRole: t.artist.id === EMINEM_DEEZER_ID ? "primary" : "feature",
-  }));
+  // Re-collapse via track ids so each track appears once
+  const seenTrackIds = new Set<number>();
+  const rows: NewSong[] = [];
+  for (const { track: t, albumTitle } of claimedByKey.values()) {
+    if (seenTrackIds.has(t.id)) continue;
+    seenTrackIds.add(t.id);
+    rows.push({
+      musicbrainzId: null,
+      title: t.title,
+      primaryArtist: t.artist.name,
+      featuredArtists: [],
+      album: albumTitle,
+      releaseDate: null,
+      artUrl: t.album.cover_xl ?? t.album.cover_big ?? null,
+      previewUrl: t.preview ?? null,
+      deezerTrackId: t.id ?? null,
+      durationMs: t.duration ? t.duration * 1000 : null,
+      eminemRole: t.artist.id === EMINEM_DEEZER_ID ? "primary" : "feature",
+    });
+  }
 
   console.log(`  unique primary tracks: ${rows.length}`);
   return rows;
@@ -320,19 +345,81 @@ async function main() {
   await enrichFeatureArt(features);
   const all = crossDedupe([...primary, ...features]);
 
-  console.log(`\n→ Inserting ${all.length} songs...`);
+  console.log(`\n→ Upserting ${all.length} songs (preserving rankings)...`);
   const db = createDbClient();
-  // Wipe old data — schema is small, easier than diff-merging
-  await db.delete(songs).run();
 
-  // Insert in batches of 50 — single-row inserts are slow against remote Turso
-  const BATCH = 50;
-  for (let i = 0; i < all.length; i += BATCH) {
-    const batch = all.slice(i, i + BATCH);
-    await db.insert(songs).values(batch).run();
-    process.stdout.write(`\r  inserted ${Math.min(i + BATCH, all.length)}/${all.length}`);
+  // Pull existing songs once so we can match by deezer_track_id (preferred,
+  // most stable) or by (normalized title + normalized primary artist).
+  // Songs in the DB but absent from this seed are LEFT ALONE — they may be
+  // referenced by user rankings.
+  const existing = await db.select().from(songs).all();
+  const byTrackId = new Map<number, number>(); // deezer_track_id → song.id
+  const byTitleArtist = new Map<string, number>();
+  for (const s of existing) {
+    if (s.deezerTrackId !== null) byTrackId.set(s.deezerTrackId, s.id);
+    const key = `${normalizeTitle(s.title)}|${normalizeArtist(s.primaryArtist)}`;
+    if (!byTitleArtist.has(key)) byTitleArtist.set(key, s.id);
   }
-  process.stdout.write("\n");
+
+  let inserted = 0;
+  let updated = 0;
+  for (const row of all) {
+    const matchById = row.deezerTrackId
+      ? byTrackId.get(row.deezerTrackId)
+      : undefined;
+    const matchByTitle =
+      matchById ??
+      byTitleArtist.get(
+        `${normalizeTitle(row.title)}|${normalizeArtist(row.primaryArtist)}`,
+      );
+    if (matchByTitle) {
+      await db
+        .update(songs)
+        .set({
+          title: row.title,
+          primaryArtist: row.primaryArtist,
+          featuredArtists: row.featuredArtists,
+          album: row.album,
+          artUrl: row.artUrl,
+          previewUrl: row.previewUrl,
+          deezerTrackId: row.deezerTrackId,
+          durationMs: row.durationMs,
+          eminemRole: row.eminemRole,
+        })
+        .where(eq(songs.id, matchByTitle))
+        .run();
+      updated++;
+    } else {
+      await db.insert(songs).values(row).run();
+      inserted++;
+    }
+    if ((inserted + updated) % 25 === 0) {
+      process.stdout.write(
+        `\r  ${inserted + updated}/${all.length} (${updated} updated, ${inserted} new)`,
+      );
+    }
+  }
+  process.stdout.write(
+    `\r  ${inserted + updated}/${all.length} (${updated} updated, ${inserted} new)\n`,
+  );
+
+  // Final pass: normalize album names on every song (catches existing rows
+  // not covered by the upsert above — e.g. orphan tracks from prior seeds).
+  console.log("→ Normalizing album names...");
+  const allInDb = await db
+    .select({ id: songs.id, album: songs.album })
+    .from(songs)
+    .all();
+  let renamed = 0;
+  for (const s of allInDb) {
+    if (!s.album) continue;
+    const canon = canonicalAlbumName(s.album);
+    if (canon !== s.album) {
+      await db.update(songs).set({ album: canon }).where(eq(songs.id, s.id)).run();
+      renamed++;
+    }
+  }
+  console.log(`  renamed ${renamed} albums`);
 
   const counts = await db
     .select({ role: songs.eminemRole, n: sql<number>`count(*)` })

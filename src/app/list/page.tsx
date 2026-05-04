@@ -4,14 +4,18 @@ import {
   getActiveSession,
   getAlbumRankings,
   getRanking,
+  getSavedSongIds,
+  getSavedSongs,
   getStats,
 } from "@/lib/ranking/queries";
 import { RankingList } from "../_components/RankingList";
 import { SearchAddSong } from "../_components/SearchAddSong";
-import { TopThreePodium } from "../_components/TopThreePodium";
 import { AlbumList } from "../_components/AlbumList";
 import { ListTabs } from "../_components/ListTabs";
 import { StatStrip } from "../_components/StatStrip";
+import { SavedList } from "../_components/SavedList";
+
+type View = "albums" | "songs" | "saved";
 
 export default async function ListPage({
   searchParams,
@@ -19,16 +23,23 @@ export default async function ListPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const params = await searchParams;
-  const view: "albums" | "songs" = params.view === "songs" ? "songs" : "albums";
+  const view: View =
+    params.view === "songs"
+      ? "songs"
+      : params.view === "saved"
+        ? "saved"
+        : "albums";
 
   const userId = await getCurrentUserId();
-  const [ranking, albumRankings, activeSession, stats] = await Promise.all([
-    getRanking(userId),
-    getAlbumRankings(userId),
-    getActiveSession(userId),
-    getStats(userId),
-  ]);
-  const hasPodium = ranking.length >= 3;
+  const [ranking, albumRankings, activeSession, stats, savedIds, savedSongs] =
+    await Promise.all([
+      getRanking(userId),
+      getAlbumRankings(userId),
+      getActiveSession(userId),
+      getStats(userId),
+      getSavedSongIds(userId),
+      getSavedSongs(userId),
+    ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
@@ -42,11 +53,9 @@ export default async function ListPage({
 
       <StatStrip stats={stats} />
 
-      {hasPodium && view === "songs" && <TopThreePodium items={ranking} />}
-
       <ListTabs active={view} />
 
-      {view === "albums" ? (
+      {view === "albums" && (
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-(--muted)">
@@ -60,11 +69,13 @@ export default async function ListPage({
           </div>
           <AlbumList items={albumRankings} />
         </section>
-      ) : (
+      )}
+
+      {view === "songs" && (
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-(--muted)">
-              {hasPodium ? "the rest" : "your songs"}
+              your ranking
             </h2>
             {ranking.length > 0 && (
               <span className="text-xs text-(--muted)">
@@ -73,7 +84,23 @@ export default async function ListPage({
             )}
           </div>
           <SearchAddSong />
-          <RankingList items={ranking} startAtPosition={hasPodium ? 4 : 1} />
+          <RankingList items={ranking} savedIds={savedIds} />
+        </section>
+      )}
+
+      {view === "saved" && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-(--muted)">
+              saved for later
+            </h2>
+            {savedSongs.length > 0 && (
+              <span className="text-xs text-(--muted)">
+                {savedSongs.length} saved
+              </span>
+            )}
+          </div>
+          <SavedList items={savedSongs} />
         </section>
       )}
     </div>

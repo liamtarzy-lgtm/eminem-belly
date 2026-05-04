@@ -393,11 +393,62 @@ export async function tooToughChoice(
     },
   );
 
+  // Mark target + opponent as tied. Target was placed at opponent's old slot;
+  // opponent shifted to finalPosition+1. Write reciprocal tied_with pointers.
+  await db
+    .update(rankings)
+    .set({ tiedWithSongId: opponentSongId })
+    .where(
+      and(
+        eq(rankings.userId, userId),
+        eq(rankings.songId, session.targetSongId),
+      ),
+    )
+    .run();
+  await db
+    .update(rankings)
+    .set({ tiedWithSongId: session.targetSongId })
+    .where(
+      and(eq(rankings.userId, userId), eq(rankings.songId, opponentSongId)),
+    )
+    .run();
+
   return {
     kind: "done",
     finalPosition,
     targetSongId: session.targetSongId,
   };
+}
+
+// ─── Saved songs ───────────────────────────────────────────────────────
+export async function toggleSaved(songId: number): Promise<{ saved: boolean }> {
+  const userId = await getCurrentUserId();
+  const existing = await db
+    .select({ id: schema.savedSongs.id })
+    .from(schema.savedSongs)
+    .where(
+      and(
+        eq(schema.savedSongs.userId, userId),
+        eq(schema.savedSongs.songId, songId),
+      ),
+    )
+    .get();
+  if (existing) {
+    await db
+      .delete(schema.savedSongs)
+      .where(eq(schema.savedSongs.id, existing.id))
+      .run();
+    safeRevalidate("/", "/list");
+    return { saved: false };
+  }
+  await db.insert(schema.savedSongs).values({ userId, songId }).run();
+  safeRevalidate("/", "/list");
+  return { saved: true };
+}
+
+export async function removeSavedForm(formData: FormData): Promise<void> {
+  const songId = Number(formData.get("songId"));
+  await toggleSaved(songId);
 }
 
 export async function cancelSession(sessionId: number): Promise<void> {

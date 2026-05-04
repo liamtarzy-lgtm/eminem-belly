@@ -1,45 +1,62 @@
-import type { RankedSong } from "@/lib/ranking/queries";
 import { rankToScore } from "@/lib/score";
 import { recompareForm } from "@/lib/ranking/actions";
+import { withDisplayRanks, type RankedSong } from "@/lib/ranking/queries";
 import { SongImage } from "./SongImage";
 import { Score } from "./ScoreBadge";
 import { PlayPreview } from "./PlayPreview";
+import { SaveButton } from "./SaveButton";
 
 export function RankingList({
   items,
-  startAtPosition = 1,
+  savedIds,
 }: {
   items: RankedSong[];
-  startAtPosition?: number;
+  savedIds: Set<number>;
 }) {
   if (items.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-(--border) bg-(--surface) p-8 text-center">
         <div className="text-sm text-(--muted)">
-          Nothing here yet. Tap <span className="text-foreground font-medium">rank</span> in the header to start.
+          Nothing here yet. Tap{" "}
+          <span className="text-foreground font-medium">rank</span> in the header to start.
         </div>
       </div>
     );
   }
-  const total = items.length + (startAtPosition - 1);
-  const visible = items.filter((r) => r.position >= startAtPosition);
+  const total = items.length;
+  const withRanks = withDisplayRanks(items);
   return (
     <ol className="flex flex-col gap-1.5">
-      {visible.map(({ position, song }) => {
-        const score = rankToScore(position, total);
+      {withRanks.map(({ position, displayRank, song, tiedWithSongId }, idx) => {
+        const score = rankToScore(displayRank, total);
+        const isTiedWithPrev =
+          idx > 0 && withRanks[idx - 1].displayRank === displayRank;
+        const isTiedWithNext =
+          idx < withRanks.length - 1 &&
+          withRanks[idx + 1].displayRank === displayRank;
+        const isInTie = isTiedWithPrev || isTiedWithNext;
         return (
           <li
             key={song.id}
             className="group flex items-center gap-3 rounded-xl border border-transparent bg-(--surface) p-2.5 transition hover:border-(--border) hover:bg-(--surface-2) sm:gap-4 sm:p-3"
           >
-            <div className="w-7 shrink-0 text-right font-mono text-sm text-(--muted) sm:w-9 sm:text-base">
-              {position}
+            <div className="w-9 shrink-0 text-right font-mono text-sm text-(--muted) sm:w-11 sm:text-base">
+              {isTiedWithPrev ? (
+                <span className="text-(--accent-soft)">=</span>
+              ) : isInTie ? (
+                <span className="text-(--accent-soft)">T-{displayRank}</span>
+              ) : (
+                displayRank
+              )}
             </div>
             <div className="relative shrink-0">
               <SongImage song={song} size="sm" />
               <PlayPreview
+                key={song.id}
                 songId={song.id}
                 hasPreview={!!song.previewUrl}
+                title={song.title}
+                artist={song.primaryArtist}
                 size="sm"
                 className="absolute inset-0 m-auto"
               />
@@ -60,16 +77,23 @@ export function RankingList({
             <div className="shrink-0 pr-1">
               <Score score={score} size="md" />
             </div>
-            <form action={recompareForm} className="shrink-0">
-              <input type="hidden" name="songId" value={song.id} />
-              <button
-                type="submit"
-                aria-label="re-rank"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-(--muted) transition hover:border-(--accent) hover:text-foreground"
-              >
-                ↺
-              </button>
-            </form>
+            <div className="flex shrink-0 items-center gap-1">
+              <SaveButton
+                songId={song.id}
+                initialSaved={savedIds.has(song.id)}
+                size="sm"
+              />
+              <form action={recompareForm}>
+                <input type="hidden" name="songId" value={song.id} />
+                <button
+                  type="submit"
+                  aria-label="re-rank"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-(--muted) transition hover:border-(--accent) hover:text-foreground"
+                >
+                  ↺
+                </button>
+              </form>
+            </div>
           </li>
         );
       })}

@@ -79,6 +79,11 @@ export const rankings = sqliteTable(
       .notNull()
       .references(() => songs.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
+    // Set to a sibling song id when the user marked them as "too tough" /
+    // tied. Tie groups are derived transitively at read time.
+    tiedWithSongId: integer("tied_with_song_id").references(() => songs.id, {
+      onDelete: "set null",
+    }),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -90,6 +95,23 @@ export const rankings = sqliteTable(
     uniqueIndex("rankings_user_song_uq").on(t.userId, t.songId),
     uniqueIndex("rankings_user_position_uq").on(t.userId, t.position),
   ],
+);
+
+export const savedSongs = sqliteTable(
+  "saved_songs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    songId: integer("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [uniqueIndex("saved_songs_user_song_uq").on(t.userId, t.songId)],
 );
 
 export const comparisons = sqliteTable(
@@ -156,3 +178,4 @@ export type NewSong = typeof songs.$inferInsert;
 export type Ranking = typeof rankings.$inferSelect;
 export type Comparison = typeof comparisons.$inferSelect;
 export type InsertionSession = typeof insertionSessions.$inferSelect;
+export type SavedSong = typeof savedSongs.$inferSelect;

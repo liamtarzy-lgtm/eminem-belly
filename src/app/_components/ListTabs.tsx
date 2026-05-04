@@ -3,11 +3,12 @@ import Link from "next/link";
 const TABS = [
   { view: "albums", label: "Albums", href: "/list" },
   { view: "songs", label: "Songs", href: "/list?view=songs" },
+  { view: "saved", label: "Saved", href: "/list?view=saved" },
 ] as const;
 
-export function ListTabs({ active }: { active: "albums" | "songs" }) {
+export function ListTabs({ active }: { active: "albums" | "songs" | "saved" }) {
   return (
-    <div className="flex items-center gap-1 rounded-full border border-(--border) bg-(--surface) p-1 text-sm self-start">
+    <div className="flex items-center gap-1 self-start rounded-full border border-(--border) bg-(--surface) p-1 text-sm">
       {TABS.map((tab) => {
         const isActive = tab.view === active;
         return (
