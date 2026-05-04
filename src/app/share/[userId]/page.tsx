@@ -19,12 +19,20 @@ export async function generateMetadata({
     .where(eq(schema.users.id, userId))
     .get();
   const who = user?.name ?? "Someone";
+  const ogImage = `/api/og/${userId}`;
   return {
     title: `${who}'s Eminem top 10`,
     description: `${who} ranked Eminem's catalog. See their top 10.`,
     openGraph: {
       title: `${who}'s Eminem top 10`,
       description: `${who} ranked Eminem's catalog.`,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${who}'s Eminem top 10`,
+      description: `${who} ranked Eminem's catalog.`,
+      images: [ogImage],
     },
   };
 }
@@ -107,6 +115,21 @@ export default async function SharePage({
             );
           })}
         </ol>
+      )}
+
+      {top10.length > 0 && (
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <a
+            href={`/api/og/${userId}`}
+            download={`${(user.name ?? "eminem").toLowerCase().replace(/\s+/g, "-")}-top-10.png`}
+            className="rounded-lg bg-(--accent) px-5 py-2.5 text-sm font-semibold text-white hover:bg-(--accent-soft)"
+          >
+            ↓ download as image
+          </a>
+          <div className="text-[11px] text-(--muted)">
+            Right-click → Save image, or paste this page&apos;s link into iMessage / Twitter / etc. — the preview renders automatically.
+          </div>
+        </div>
       )}
 
       <footer className="mt-10 text-center text-xs text-(--muted)">
