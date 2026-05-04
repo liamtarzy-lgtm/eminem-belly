@@ -255,8 +255,9 @@ export async function getAlbumRankings(userId: string): Promise<AlbumRanking[]> 
   return result;
 }
 
-// Title patterns that mark a track as not worth ranking (skits, intros, etc).
-// Applied at query time so we don't have to delete data.
+// Title patterns + age filter for tracks not worth ranking. Applied at query
+// time (no destructive deletes) — songs already ranked stay in the user's
+// list even if they'd now be filtered.
 const NOT_A_SONG_PATTERN = sql`(
   ${schema.songs.title} LIKE '%(skit)%'
   OR ${schema.songs.title} LIKE '%[skit]%'
@@ -271,6 +272,14 @@ const NOT_A_SONG_PATTERN = sql`(
   OR lower(${schema.songs.title}) = 'skit'
   OR lower(${schema.songs.title}) = 'interlude'
   OR (${schema.songs.durationMs} IS NOT NULL AND ${schema.songs.durationMs} < 60000)
+  -- Pre-98 dropout: skip Slim Shady EP and any feature with a known release
+  -- date before 1998. Keep Infinite (1996) per user preference.
+  OR ${schema.songs.album} = 'Slim Shady EP'
+  OR (
+    ${schema.songs.releaseDate} IS NOT NULL
+    AND ${schema.songs.releaseDate} < '1998-01-01'
+    AND (${schema.songs.album} IS NULL OR ${schema.songs.album} != 'Infinite')
+  )
 )`;
 
 // ─── Saved songs ───────────────────────────────────────────────────────

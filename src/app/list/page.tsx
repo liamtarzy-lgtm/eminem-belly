@@ -14,8 +14,10 @@ import { AlbumList } from "../_components/AlbumList";
 import { ListTabs } from "../_components/ListTabs";
 import { StatStrip } from "../_components/StatStrip";
 import { SavedList } from "../_components/SavedList";
+import { TierList } from "../_components/TierList";
+import { ShareLinkButton } from "../_components/ShareLinkButton";
 
-type View = "albums" | "songs" | "saved";
+type View = "albums" | "songs" | "tiers" | "saved";
 
 export default async function ListPage({
   searchParams,
@@ -26,9 +28,11 @@ export default async function ListPage({
   const view: View =
     params.view === "songs"
       ? "songs"
-      : params.view === "saved"
-        ? "saved"
-        : "albums";
+      : params.view === "tiers"
+        ? "tiers"
+        : params.view === "saved"
+          ? "saved"
+          : "albums";
 
   const userId = await getCurrentUserId();
   const [ranking, albumRankings, activeSession, stats, savedIds, savedSongs] =
@@ -53,7 +57,10 @@ export default async function ListPage({
 
       <StatStrip stats={stats} />
 
-      <ListTabs active={view} />
+      <div className="flex items-center justify-between gap-3">
+        <ListTabs active={view} />
+        {ranking.length >= 3 && <ShareLinkButton userId={userId} />}
+      </div>
 
       {view === "albums" && (
         <section className="flex flex-col gap-3">
@@ -85,6 +92,17 @@ export default async function ListPage({
           </div>
           <SearchAddSong />
           <RankingList items={ranking} savedIds={savedIds} />
+        </section>
+      )}
+
+      {view === "tiers" && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-(--muted)">
+              your tiers
+            </h2>
+          </div>
+          <TierList items={ranking} />
         </section>
       )}
 
