@@ -1,6 +1,6 @@
 import { createDbClient } from "../src/db/client";
-import { songs, type NewSong } from "../src/db/schema";
-import { sql, eq, and, or } from "drizzle-orm";
+import { songs, songAlbums, type NewSong } from "../src/db/schema";
+import { sql, eq, and, or, isNotNull, notInArray, inArray } from "drizzle-orm";
 import { canonicalAlbumName, isCompilationAlbum } from "../src/lib/album";
 
 const EMINEM_DEEZER_ID = 13;
@@ -104,8 +104,17 @@ type DzAlbumDetail = DzAlbum & {
 };
 type DzSearch = { data: DzTrack[]; total: number; next?: string };
 
+type Appearance = {
+  albumTitle: string;
+  albumArt: string | null;
+  albumReleaseDate: string | null;
+};
+
 // ─── Phase 1: Primary tracks via Deezer ────────────────────────────────
-async function pullDeezerPrimary(): Promise<NewSong[]> {
+async function pullDeezerPrimary(): Promise<{
+  rows: NewSong[];
+  appearancesByDzId: Map<number, Appearance[]>;
+}> {
   console.log("→ [Deezer] Fetching Eminem albums...");
   const albums: DzAlbum[] = [];
   let url: string | undefined = `/artist/${EMINEM_DEEZER_ID}/albums?limit=100`;
@@ -163,26 +172,47 @@ async function pullDeezerPrimary(): Promise<NewSong[]> {
   process.stdout.write("\n");
 
   // Walk albums in chronological order. First album to claim a song wins —
-  // so a track on both Encore (2004) and Curtain Call (2005) ends up
-  // attributed to Encore. Comps come last, so they only catch orphans.
+  // so a track on both Encore (2004) and Curtain Call (2005) is attributed
+  // to Encore as its PRIMARY album. We also record every other appearance so
+  // album rankings can credit the song to all albums it shipped on.
   const claimedByKey = new Map<string, { track: DzTrack; albumTitle: string }>();
+  // Keyed by Deezer track id. List is in chronological order; first entry is
+  // primary.
+  const appearancesByDzId = new Map<number, Appearance[]>();
+
   for (const album of orderedAlbums) {
     const tracks = tracksFromAlbum.get(album.id) ?? [];
     const canonAlbum = canonicalAlbumName(album.title);
+    const albumArt = album.cover_xl ?? album.cover_big ?? null;
     for (const t of tracks) {
       if (deezerJunk(t.title, t.title_version)) continue;
       const titleKey = normalizeTitle(t.title);
       if (!titleKey) continue;
+
+      // Track every appearance (skip if same canonical album name already
+      // recorded — e.g. don't double-count "Encore" vs "Encore Deluxe").
+      const existing = appearancesByDzId.get(t.id) ?? [];
+      if (!existing.some((a) => a.albumTitle === canonAlbum)) {
+        existing.push({
+          albumTitle: canonAlbum,
+          albumArt,
+          albumReleaseDate: album.release_date ?? null,
+        });
+        appearancesByDzId.set(t.id, existing);
+      }
+
+      // Primary-album dedup (existing logic — first claim wins)
       const isrcKey = t.isrc?.trim() ? `isrc:${t.isrc.trim()}` : null;
       const fallback = `${titleKey}|${normalizeArtist(t.artist.name)}`;
       const key = isrcKey ?? fallback;
-      if (claimedByKey.has(key)) continue; // earlier album wins
+      if (claimedByKey.has(key)) continue;
       claimedByKey.set(key, { track: t, albumTitle: canonAlbum });
       if (isrcKey && !claimedByKey.has(fallback)) {
         claimedByKey.set(fallback, { track: t, albumTitle: canonAlbum });
       }
     }
   }
+
 
   // Re-collapse via track ids so each track appears once
   const seenTrackIds = new Set<number>();
@@ -206,7 +236,7 @@ async function pullDeezerPrimary(): Promise<NewSong[]> {
   }
 
   console.log(`  unique primary tracks: ${rows.length}`);
-  return rows;
+  return { rows, appearancesByDzId };
 }
 
 // ─── Phase 2: Features via MusicBrainz ─────────────────────────────────
@@ -340,7 +370,7 @@ function crossDedupe(rows: NewSong[]): NewSong[] {
 
 // ─── Main ──────────────────────────────────────────────────────────────
 async function main() {
-  const primary = await pullDeezerPrimary();
+  const { rows: primary, appearancesByDzId } = await pullDeezerPrimary();
   const features = await pullMbFeatures();
   await enrichFeatureArt(features);
   const all = crossDedupe([...primary, ...features]);
@@ -420,6 +450,79 @@ async function main() {
     }
   }
   console.log(`  renamed ${renamed} albums`);
+
+  // Populate song_albums (one row per song × album it appears on). Lets the
+  // album rankings page credit a song to every album it ships on, not just
+  // its primary album. Idempotent — re-runs UPSERT existing rows.
+  console.log("→ Writing song_albums (multi-album mapping)...");
+  const songsWithDzId = await db
+    .select({ id: songs.id, deezerTrackId: songs.deezerTrackId, album: songs.album, artUrl: songs.artUrl })
+    .from(songs)
+    .all();
+  const songIdByDzId = new Map<number, number>();
+  for (const s of songsWithDzId) {
+    if (s.deezerTrackId !== null) songIdByDzId.set(s.deezerTrackId, s.id);
+  }
+
+  let appearancesWritten = 0;
+  for (const [dzId, appearances] of appearancesByDzId.entries()) {
+    const songId = songIdByDzId.get(dzId);
+    if (!songId) continue;
+    for (let i = 0; i < appearances.length; i++) {
+      const a = appearances[i];
+      await db
+        .insert(songAlbums)
+        .values({
+          songId,
+          albumName: a.albumTitle,
+          albumArtUrl: a.albumArt,
+          albumReleaseDate: a.albumReleaseDate,
+          isPrimary: i === 0,
+        })
+        .onConflictDoUpdate({
+          target: [songAlbums.songId, songAlbums.albumName],
+          set: {
+            albumArtUrl: a.albumArt,
+            albumReleaseDate: a.albumReleaseDate,
+            isPrimary: i === 0,
+          },
+        })
+        .run();
+      appearancesWritten++;
+    }
+  }
+  // Backfill: any song that has a primary album but no song_albums entry at
+  // all (e.g. older rows from the previous seed that don't match a Deezer
+  // track id) — give them a single primary entry.
+  const orphans = await db
+    .select({ id: songs.id, album: songs.album, artUrl: songs.artUrl })
+    .from(songs)
+    .where(isNotNull(songs.album))
+    .all();
+  const songsWithAlbumEntry = new Set(
+    (
+      await db.select({ songId: songAlbums.songId }).from(songAlbums).all()
+    ).map((r) => r.songId),
+  );
+  let backfilled = 0;
+  for (const s of orphans) {
+    if (songsWithAlbumEntry.has(s.id)) continue;
+    if (!s.album) continue;
+    await db
+      .insert(songAlbums)
+      .values({
+        songId: s.id,
+        albumName: canonicalAlbumName(s.album),
+        albumArtUrl: s.artUrl,
+        isPrimary: true,
+      })
+      .onConflictDoNothing()
+      .run();
+    backfilled++;
+  }
+  console.log(
+    `  wrote ${appearancesWritten} appearances + backfilled ${backfilled} orphans`,
+  );
 
   const counts = await db
     .select({ role: songs.eminemRole, n: sql<number>`count(*)` })

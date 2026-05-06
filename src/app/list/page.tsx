@@ -57,6 +57,8 @@ export default async function ListPage({
 
       <StatStrip stats={stats} />
 
+      <SearchAddSong />
+
       <div className="flex items-center justify-between gap-3">
         <ListTabs active={view} />
         {ranking.length >= 3 && <ShareLinkButton userId={userId} />}
@@ -90,7 +92,6 @@ export default async function ListPage({
               </span>
             )}
           </div>
-          <SearchAddSong />
           <RankingList items={ranking} savedIds={savedIds} />
         </section>
       )}

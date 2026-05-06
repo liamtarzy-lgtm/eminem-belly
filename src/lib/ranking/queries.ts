@@ -1,5 +1,5 @@
 import { db, schema } from "@/db";
-import { and, asc, desc, eq, like, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, notInArray, or, sql } from "drizzle-orm";
 import { rankToScore } from "@/lib/score";
 
 export type RankedSong = {
@@ -232,24 +232,85 @@ export async function getAlbumRankings(userId: string): Promise<AlbumRanking[]> 
     .all();
 
   const total = ranked.length;
-  const grouped = new Map<
+  if (total === 0) return [];
+
+  // Look up every album each ranked song appears on (8 Mile + Curtain Call +
+  // studio original, etc.). A song's score gets credited to *all* its
+  // albums — so an album you've ranked many tracks from gets a higher avg.
+  const songIds = ranked
+    .filter((r) => r.song.eminemRole === "primary")
+    .map((r) => r.song.id);
+  if (songIds.length === 0) return [];
+  const appearances = await db
+    .select()
+    .from(schema.songAlbums)
+    .where(inArray(schema.songAlbums.songId, songIds))
+    .all();
+
+  // Map song_id → its list of (album, art) appearances
+  const appearancesBySongId = new Map<number, typeof appearances>();
+  for (const a of appearances) {
+    const arr = appearancesBySongId.get(a.songId) ?? [];
+    arr.push(a);
+    appearancesBySongId.set(a.songId, arr);
+  }
+
+  // Group rankings by album, attributing each ranked song to every album it
+  // ships on. Track the song's primary album cover so the album header can
+  // show its canonical art (not e.g. the Curtain Call cover for Lose Yourself).
+  type Entry = {
+    position: number;
+    song: typeof schema.songs.$inferSelect;
+    score: number;
+  };
+  const byAlbum = new Map<
     string,
-    { position: number; song: typeof schema.songs.$inferSelect; score: number }[]
+    { entries: Entry[]; cover: string | null }
   >();
   for (const r of ranked) {
-    if (!r.song.album) continue;
     if (r.song.eminemRole !== "primary") continue;
     const score = rankToScore(r.position, total);
-    const arr = grouped.get(r.song.album) ?? [];
-    arr.push({ position: r.position, song: r.song, score });
-    grouped.set(r.song.album, arr);
+    const apps = appearancesBySongId.get(r.song.id) ?? [];
+    if (apps.length === 0) {
+      // Fallback: legacy rows where the song has an album field but no
+      // song_albums entry — credit just that one album.
+      if (!r.song.album) continue;
+      const bucket = byAlbum.get(r.song.album) ?? {
+        entries: [],
+        cover: r.song.artUrl,
+      };
+      bucket.entries.push({ position: r.position, song: r.song, score });
+      byAlbum.set(r.song.album, bucket);
+      continue;
+    }
+    for (const a of apps) {
+      const bucket = byAlbum.get(a.albumName) ?? {
+        entries: [],
+        cover: a.albumArtUrl ?? r.song.artUrl,
+      };
+      bucket.entries.push({ position: r.position, song: r.song, score });
+      // Prefer a cover that matches the album appearance over the song's
+      // primary artUrl.
+      if (a.albumArtUrl && !bucket.cover) bucket.cover = a.albumArtUrl;
+      byAlbum.set(a.albumName, bucket);
+    }
   }
 
   const result: AlbumRanking[] = [];
-  for (const [album, songs] of grouped.entries()) {
-    const avgScore = songs.reduce((s, x) => s + x.score, 0) / songs.length;
-    const topSong = songs[0].song;
-    result.push({ album, avgScore, songCount: songs.length, topSong, songs });
+  for (const [album, bucket] of byAlbum.entries()) {
+    const songsList = bucket.entries.sort((a, b) => a.position - b.position);
+    const avgScore =
+      songsList.reduce((s, x) => s + x.score, 0) / songsList.length;
+    // topSong is the highest-ranked song from this album; its art is used as
+    // the album header thumbnail (overriding bucket.cover if needed).
+    const topSong = songsList[0].song;
+    result.push({
+      album,
+      avgScore,
+      songCount: songsList.length,
+      topSong: { ...topSong, artUrl: bucket.cover ?? topSong.artUrl },
+      songs: songsList,
+    });
   }
   result.sort((a, b) => b.avgScore - a.avgScore);
   return result;

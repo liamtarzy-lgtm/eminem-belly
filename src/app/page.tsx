@@ -183,7 +183,12 @@ function ChoiceCard({
           title={song.title}
           artist={song.primaryArtist}
         />
-        <SaveButton songId={song.id} initialSaved={isSaved} size="sm" />
+        <SaveButton
+          key={song.id}
+          songId={song.id}
+          initialSaved={isSaved}
+          size="sm"
+        />
       </div>
 
       <form action={submitChoiceForm} className="flex w-full">

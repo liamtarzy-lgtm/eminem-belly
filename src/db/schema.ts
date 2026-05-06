@@ -114,6 +114,29 @@ export const savedSongs = sqliteTable(
   (t) => [uniqueIndex("saved_songs_user_song_uq").on(t.userId, t.songId)],
 );
 
+// One row per (song, album) appearance. A song that ships on multiple
+// releases (e.g. Lose Yourself on 8 Mile + Curtain Call) gets one row per
+// album, with `isPrimary=1` on the canonical/original album.
+export const songAlbums = sqliteTable(
+  "song_albums",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    songId: integer("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    albumName: text("album_name").notNull(),
+    albumArtUrl: text("album_art_url"),
+    albumReleaseDate: text("album_release_date"),
+    isPrimary: integer("is_primary", { mode: "boolean" })
+      .notNull()
+      .default(false),
+  },
+  (t) => [
+    uniqueIndex("song_albums_song_album_uq").on(t.songId, t.albumName),
+    index("song_albums_album_idx").on(t.albumName),
+  ],
+);
+
 export const comparisons = sqliteTable(
   "comparisons",
   {
@@ -179,3 +202,4 @@ export type Ranking = typeof rankings.$inferSelect;
 export type Comparison = typeof comparisons.$inferSelect;
 export type InsertionSession = typeof insertionSessions.$inferSelect;
 export type SavedSong = typeof savedSongs.$inferSelect;
+export type SongAlbum = typeof songAlbums.$inferSelect;

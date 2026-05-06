@@ -1,11 +1,23 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { getRanking, withDisplayRanks } from "@/lib/ranking/queries";
-import { rankToScore, formatScore } from "@/lib/score";
+import { rankToScore, formatScore, scoreClasses } from "@/lib/score";
 import { SongImage } from "../../_components/SongImage";
 
 export const dynamic = "force-dynamic";
+
+type View = "top10" | "full" | "tiers";
+
+const TIERS = [
+  { letter: "S", min: 9, label: "Untouchable", color: "#facc15" },
+  { letter: "A", min: 7.5, label: "Heat", color: "#fb923c" },
+  { letter: "B", min: 6, label: "Solid", color: "#dc2626" },
+  { letter: "C", min: 4.5, label: "OK", color: "#a3a3a3" },
+  { letter: "D", min: 3, label: "Skip", color: "#525252" },
+  { letter: "F", min: 0, label: "Mid", color: "#404040" },
+];
 
 export async function generateMetadata({
   params,
@@ -22,7 +34,7 @@ export async function generateMetadata({
   const ogImage = `/api/og/${userId}`;
   return {
     title: `${who}'s Eminem top 10`,
-    description: `${who} ranked Eminem's catalog. See their top 10.`,
+    description: `${who} ranked Eminem's catalog.`,
     openGraph: {
       title: `${who}'s Eminem top 10`,
       description: `${who} ranked Eminem's catalog.`,
@@ -39,95 +51,80 @@ export async function generateMetadata({
 
 export default async function SharePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ userId: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
   const { userId } = await params;
+  const sp = await searchParams;
+  const view: View =
+    sp.view === "full" ? "full" : sp.view === "tiers" ? "tiers" : "top10";
+
   const user = await db
     .select({ name: schema.users.name, image: schema.users.image })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .get();
-
   if (!user) notFound();
 
   const ranking = await getRanking(userId);
   const total = ranking.length;
-  const top10 = withDisplayRanks(ranking).slice(0, 10);
+  const ranked = withDisplayRanks(ranking);
+
+  const slug = (user.name ?? "eminem").toLowerCase().replace(/\s+/g, "-");
+  const downloadUrl =
+    view === "top10"
+      ? `/api/og/${userId}`
+      : `/api/og/${userId}?view=${view}`;
+  const downloadName =
+    view === "top10"
+      ? `${slug}-top-10.png`
+      : view === "full"
+        ? `${slug}-full-ranking.png`
+        : `${slug}-tiers.png`;
 
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="mb-8 text-center">
+      <header className="mb-6 text-center">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-(--accent-soft)">
           Eminem · Belly
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-          {user.name ?? "Someone"}&apos;s top 10
+          {user.name ?? "Someone"}&apos;s ranking
         </h1>
         {total > 0 && (
           <div className="mt-1 text-sm text-(--muted)">
-            ranked from {total} song{total === 1 ? "" : "s"}
+            from {total} song{total === 1 ? "" : "s"} ranked
           </div>
         )}
       </header>
 
-      {top10.length === 0 ? (
+      <ShareTabs userId={userId} active={view} />
+
+      {ranked.length === 0 ? (
         <div className="rounded-xl border border-dashed border-(--border) bg-(--surface) p-10 text-center text-(--muted)">
           {user.name ?? "This user"} hasn&apos;t ranked any songs yet.
         </div>
+      ) : view === "top10" ? (
+        <Top10View ranked={ranked} total={total} />
+      ) : view === "full" ? (
+        <FullView ranked={ranked} total={total} />
       ) : (
-        <ol className="flex flex-col gap-2">
-          {top10.map(({ displayRank, song }, idx) => {
-            const score = rankToScore(displayRank, total);
-            const isTop = idx === 0;
-            return (
-              <li
-                key={song.id}
-                className={`flex items-center gap-3 rounded-xl border p-3 sm:gap-4 sm:p-4 ${
-                  isTop
-                    ? "border-(--accent) bg-gradient-to-r from-(--accent)/10 to-transparent"
-                    : "border-(--border) bg-(--surface)"
-                }`}
-              >
-                <div
-                  className={`w-10 shrink-0 text-center font-mono text-2xl font-bold ${
-                    isTop ? "text-(--accent-soft)" : "text-(--muted)"
-                  }`}
-                >
-                  {displayRank}
-                </div>
-                <SongImage song={song} size={isTop ? "md" : "sm"} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold sm:text-lg">
-                    {song.title}
-                  </div>
-                  <div className="truncate text-sm text-(--muted)">
-                    {song.primaryArtist}
-                    {song.album && (
-                      <span className="text-(--muted)/70"> · {song.album}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="shrink-0 font-mono text-xl font-bold tabular-nums sm:text-2xl">
-                  {formatScore(score)}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+        <TiersView ranked={ranked} total={total} />
       )}
 
-      {top10.length > 0 && (
+      {ranked.length > 0 && (
         <div className="mt-8 flex flex-col items-center gap-3">
           <a
-            href={`/api/og/${userId}`}
-            download={`${(user.name ?? "eminem").toLowerCase().replace(/\s+/g, "-")}-top-10.png`}
+            href={downloadUrl}
+            download={downloadName}
             className="rounded-lg bg-(--accent) px-5 py-2.5 text-sm font-semibold text-white hover:bg-(--accent-soft)"
           >
-            ↓ download as image
+            ↓ download {view === "top10" ? "top 10" : view === "full" ? "full list" : "tier list"} as image
           </a>
-          <div className="text-[11px] text-(--muted)">
-            Right-click → Save image, or paste this page&apos;s link into iMessage / Twitter / etc. — the preview renders automatically.
+          <div className="text-[11px] text-center text-(--muted)">
+            Or paste this page&apos;s link into iMessage / Twitter / etc. — the preview renders automatically.
           </div>
         </div>
       )}
@@ -139,6 +136,178 @@ export default async function SharePage({
         </a>{" "}
         — rank Em&apos;s catalog yourself.
       </footer>
+    </div>
+  );
+}
+
+function ShareTabs({ userId, active }: { userId: string; active: View }) {
+  const tabs: { view: View; label: string }[] = [
+    { view: "top10", label: "Top 10" },
+    { view: "full", label: "Full" },
+    { view: "tiers", label: "Tiers" },
+  ];
+  return (
+    <div className="mb-5 flex justify-center">
+      <div className="flex items-center gap-1 rounded-full border border-(--border) bg-(--surface) p-1 text-sm">
+        {tabs.map((t) => {
+          const href =
+            t.view === "top10"
+              ? `/share/${userId}`
+              : `/share/${userId}?view=${t.view}`;
+          const isActive = t.view === active;
+          return (
+            <Link
+              key={t.view}
+              href={href}
+              className={
+                isActive
+                  ? "rounded-full bg-(--accent) px-4 py-1.5 font-semibold text-white"
+                  : "rounded-full px-4 py-1.5 text-(--muted) hover:text-foreground"
+              }
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Top10View({
+  ranked,
+  total,
+}: {
+  ranked: ReturnType<typeof withDisplayRanks>;
+  total: number;
+}) {
+  const top10 = ranked.slice(0, 10);
+  return (
+    <ol className="flex flex-col gap-2">
+      {top10.map(({ displayRank, song }, idx) => {
+        const score = rankToScore(displayRank, total);
+        const isTop = idx === 0;
+        return (
+          <li
+            key={song.id}
+            className={`flex items-center gap-3 rounded-xl border p-3 sm:gap-4 sm:p-4 ${
+              isTop
+                ? "border-(--accent) bg-gradient-to-r from-(--accent)/10 to-transparent"
+                : "border-(--border) bg-(--surface)"
+            }`}
+          >
+            <div
+              className={`w-10 shrink-0 text-center font-mono text-2xl font-bold ${
+                isTop ? "text-(--accent-soft)" : "text-(--muted)"
+              }`}
+            >
+              {displayRank}
+            </div>
+            <SongImage song={song} size={isTop ? "md" : "sm"} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold sm:text-lg">{song.title}</div>
+              <div className="truncate text-sm text-(--muted)">
+                {song.primaryArtist}
+                {song.album && (
+                  <span className="text-(--muted)/70"> · {song.album}</span>
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 font-mono text-xl font-bold tabular-nums sm:text-2xl">
+              {formatScore(score)}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function FullView({
+  ranked,
+  total,
+}: {
+  ranked: ReturnType<typeof withDisplayRanks>;
+  total: number;
+}) {
+  return (
+    <ol className="flex flex-col gap-1">
+      {ranked.map(({ displayRank, song }) => {
+        const score = rankToScore(displayRank, total);
+        const c = scoreClasses(score);
+        return (
+          <li
+            key={song.id}
+            className="flex items-center gap-3 rounded-lg border border-(--border) bg-(--surface) p-2"
+          >
+            <div className="w-8 shrink-0 text-right font-mono text-sm text-(--muted)">
+              {displayRank}
+            </div>
+            <SongImage song={song} size="sm" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{song.title}</div>
+              <div className="truncate text-xs text-(--muted)">
+                {song.primaryArtist}
+              </div>
+            </div>
+            <div
+              className={`shrink-0 font-mono text-base font-bold tabular-nums ${c.text}`}
+            >
+              {formatScore(score)}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function TiersView({
+  ranked,
+  total,
+}: {
+  ranked: ReturnType<typeof withDisplayRanks>;
+  total: number;
+}) {
+  const buckets: ReturnType<typeof withDisplayRanks>[] = TIERS.map(() => []);
+  for (const r of ranked) {
+    const score = rankToScore(r.displayRank, total);
+    const idx = TIERS.findIndex((t) => score >= t.min);
+    if (idx >= 0) buckets[idx].push(r);
+  }
+  const visible = TIERS.map((t, i) => ({ tier: t, songs: buckets[i] })).filter(
+    (b) => b.songs.length > 0,
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      {visible.map(({ tier, songs }) => (
+        <div
+          key={tier.letter}
+          className="flex overflow-hidden rounded-xl border border-(--border) bg-(--surface)"
+        >
+          <div
+            className="flex min-w-[64px] flex-col items-center justify-center px-2 py-3 sm:min-w-[88px]"
+            style={{ backgroundColor: tier.color, color: "#0a0a0a" }}
+          >
+            <div className="text-3xl font-black leading-none sm:text-4xl">
+              {tier.letter}
+            </div>
+            <div className="mt-0.5 text-[9px] font-bold uppercase tracking-widest sm:text-[10px]">
+              {tier.label}
+            </div>
+          </div>
+          <div className="flex flex-1 flex-wrap items-center gap-2 p-2 sm:gap-3 sm:p-3">
+            {songs.map((r) => (
+              <div
+                key={r.song.id}
+                title={`${r.song.title} — ${r.song.primaryArtist}`}
+              >
+                <SongImage song={r.song} size="sm" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
