@@ -121,6 +121,7 @@ const SUPPLEMENTAL_ALBUM_IDS: number[] = [
 async function pullDeezerPrimary(): Promise<{
   rows: NewSong[];
   appearancesByDzId: Map<number, Appearance[]>;
+  singleAlbumNames: string[];
 }> {
   console.log("→ [Deezer] Fetching Eminem albums...");
   const albums: DzAlbum[] = [];
@@ -159,20 +160,27 @@ async function pullDeezerPrimary(): Promise<{
     )
     .sort((a, b) => (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999"));
 
-  // Studio originals first; compilations only as fallback for tracks that
-  // never appeared on a studio album (FACK, Everybody Looks at Me, etc.).
-  const studioAlbums = sortedAlbums.filter(
-    (a) => !isCompilationAlbum(a.record_type, a.title),
+  // Process order: real albums (album/ep) → compilations → singles.
+  // Real albums claim songs first so a track on both DOSS and a Houdini
+  // single ends up attributed to DOSS, not the single. Singles process last
+  // and only claim orphan tracks. song_albums entries are NOT created for
+  // singles (they're not really albums) — see below.
+  const realAlbums = sortedAlbums.filter(
+    (a) =>
+      (a.record_type === "album" || a.record_type === "ep") &&
+      !isCompilationAlbum(a.record_type, a.title),
   );
   const compAlbums = sortedAlbums.filter((a) =>
     isCompilationAlbum(a.record_type, a.title),
   );
+  const singleAlbums = sortedAlbums.filter((a) => a.record_type === "single");
   console.log(
-    `  studio: ${studioAlbums.length}  compilations (fallback): ${compAlbums.length}`,
+    `  studio: ${realAlbums.length}  comps: ${compAlbums.length}  singles: ${singleAlbums.length}`,
   );
 
-  console.log("→ [Deezer] Fetching tracklists (studio first, comps last)...");
-  const orderedAlbums = [...studioAlbums, ...compAlbums];
+  console.log("→ [Deezer] Fetching tracklists (albums → comps → singles)...");
+  const orderedAlbums = [...realAlbums, ...compAlbums, ...singleAlbums];
+  const singleAlbumIds = new Set(singleAlbums.map((a) => a.id));
   const tracksFromAlbum = new Map<number, DzTrack[]>();
   let i = 0;
   for (const album of orderedAlbums) {
@@ -213,6 +221,7 @@ async function pullDeezerPrimary(): Promise<{
     const canonAlbum = canonicalAlbumName(album.title);
     const albumArt = album.cover_xl ?? album.cover_big ?? null;
     const isSupplemental = supplementalIds.has(album.id);
+    const isSingle = singleAlbumIds.has(album.id);
     for (const t of tracks) {
       if (deezerJunk(t.title, t.title_version)) continue;
       // For supplemental "Various Artists" albums, only keep Eminem-primary
@@ -221,16 +230,19 @@ async function pullDeezerPrimary(): Promise<{
       const titleKey = normalizeTitle(t.title);
       if (!titleKey) continue;
 
-      // Track every appearance (skip if same canonical album name already
-      // recorded — e.g. don't double-count "Encore" vs "Encore Deluxe").
-      const existing = appearancesByDzId.get(t.id) ?? [];
-      if (!existing.some((a) => a.albumTitle === canonAlbum)) {
-        existing.push({
-          albumTitle: canonAlbum,
-          albumArt,
-          albumReleaseDate: album.release_date ?? null,
-        });
-        appearancesByDzId.set(t.id, existing);
+      // Singles are NOT considered albums — don't record them as appearances.
+      // They still claim primary on songs.album below if no real album does,
+      // so the song still has *some* album label for display.
+      if (!isSingle) {
+        const existing = appearancesByDzId.get(t.id) ?? [];
+        if (!existing.some((a) => a.albumTitle === canonAlbum)) {
+          existing.push({
+            albumTitle: canonAlbum,
+            albumArt,
+            albumReleaseDate: album.release_date ?? null,
+          });
+          appearancesByDzId.set(t.id, existing);
+        }
       }
 
       // Primary-album dedup (existing logic — first claim wins)
@@ -268,7 +280,8 @@ async function pullDeezerPrimary(): Promise<{
   }
 
   console.log(`  unique primary tracks: ${rows.length}`);
-  return { rows, appearancesByDzId };
+  const singleAlbumNames = singleAlbums.map((a) => canonicalAlbumName(a.title));
+  return { rows, appearancesByDzId, singleAlbumNames };
 }
 
 // ─── Phase 2: Features via MusicBrainz ─────────────────────────────────
@@ -402,7 +415,8 @@ function crossDedupe(rows: NewSong[]): NewSong[] {
 
 // ─── Main ──────────────────────────────────────────────────────────────
 async function main() {
-  const { rows: primary, appearancesByDzId } = await pullDeezerPrimary();
+  const { rows: primary, appearancesByDzId, singleAlbumNames } =
+    await pullDeezerPrimary();
   const features = await pullMbFeatures();
   await enrichFeatureArt(features);
   const all = crossDedupe([...primary, ...features]);
@@ -482,6 +496,24 @@ async function main() {
     }
   }
   console.log(`  renamed ${renamed} albums`);
+
+  // Clean up legacy single-as-album entries from previous seed runs.
+  // Singles aren't real albums — Houdini shouldn't show as its own album
+  // when it's a track on Death of Slim Shady.
+  if (singleAlbumNames.length > 0) {
+    let purged = 0;
+    for (const name of singleAlbumNames) {
+      const res = await db
+        .delete(songAlbums)
+        .where(eq(songAlbums.albumName, name))
+        .run();
+      // libsql returns rowsAffected; sum if available
+      const affected =
+        (res as { rowsAffected?: number }).rowsAffected ?? 0;
+      purged += affected;
+    }
+    console.log(`  purged ${purged} legacy single-album song_albums rows`);
+  }
 
   // Populate song_albums (one row per song × album it appears on). Lets the
   // album rankings page credit a song to every album it ships on, not just

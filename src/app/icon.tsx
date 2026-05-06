@@ -10,18 +10,18 @@ export default function Icon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#0a0a0a",
+          background: "#d70000",
           color: "white",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 36,
+          fontSize: 52,
           fontWeight: 900,
           letterSpacing: -2,
+          fontFamily: "sans-serif",
         }}
       >
         E
-        <span style={{ color: "#d70000", margin: "0 1px" }}>·</span>B
       </div>
     ),
     { ...size },

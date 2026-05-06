@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { getCurrentPlaying, stopPlayback, subscribePlaying } from "./PlayPreview";
 
 export function NowPlaying() {
   const [meta, setMeta] = useState(() => getCurrentPlaying());
+  const pathname = usePathname();
+
   useEffect(() => subscribePlaying(() => setMeta(getCurrentPlaying())), []);
+
+  // Stop any preview when the user navigates between pages — prevents stale
+  // audio from a previous page bleeding into the next view.
+  useEffect(() => {
+    stopPlayback();
+  }, [pathname]);
+
   if (!meta) return null;
   return (
     <div className="pointer-events-auto fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-full border border-(--accent)/30 bg-(--surface)/95 px-4 py-2 shadow-2xl backdrop-blur">

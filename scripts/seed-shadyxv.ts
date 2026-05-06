@@ -90,7 +90,6 @@ const TRACKLIST: Track[] = [
   { title: "Vegas", primary: "Eminem", featured: [] },
   { title: "Bane", primary: "Bad Meets Evil", featured: [] },
   { title: "Die Alone", primary: "Eminem", featured: ["Kobe"] },
-  { title: "Wicked Ways", primary: "Eminem", featured: ["X Ambassadors"] },
   { title: "Calm Down", primary: "Busta Rhymes", featured: ["Eminem"] },
 ];
 
@@ -134,6 +133,15 @@ async function findOnDeezer(track: Track): Promise<DzTrack | null> {
 async function main() {
   const db = createDbClient();
   console.log(`→ Curating "${ALBUM_NAME}" (${TRACKLIST.length} tracks)`);
+
+  // Idempotent: wipe existing ShadyXV mappings before re-creating, so
+  // tracks removed from TRACKLIST (e.g. Wicked Ways) actually go away.
+  const wipeRes = await db
+    .delete(songAlbums)
+    .where(eq(songAlbums.albumName, ALBUM_NAME))
+    .run();
+  const wiped = (wipeRes as { rowsAffected?: number }).rowsAffected ?? 0;
+  if (wiped) console.log(`  wiped ${wiped} previous ShadyXV mappings`);
 
   let albumCover: string | null = null;
   let processed = 0;

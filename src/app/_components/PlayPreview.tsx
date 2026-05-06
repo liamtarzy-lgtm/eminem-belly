@@ -58,6 +58,16 @@ export function PlayPreview({
     return subscribePlaying(() => force((n) => n + 1));
   }, []);
 
+  // Defensive: if the singleton points to an audio element that's no longer
+  // in the DOM (e.g. its component unmounted without firing cleanup), clear
+  // it so this component doesn't render a stale "playing" state.
+  useEffect(() => {
+    if (current && !current.audio.isConnected) {
+      current = null;
+      notifyAll();
+    }
+  });
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
