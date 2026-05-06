@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
-    "enrich": "tsx scripts/enrich-previews.ts"
+    "enrich": "tsx scripts/enrich-previews.ts",
+    "seed-shadyxv": "tsx scripts/seed-shadyxv.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
