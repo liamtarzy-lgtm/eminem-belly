@@ -50,10 +50,16 @@ export async function GET(
 
 type Ranked = ReturnType<typeof withDisplayRanks>;
 
-// Top 10 layout (1200×630) — punchy podium #1 + 9 row list
+// Top 10 layout (1200×630) — magazine-cover feel: huge name + glowing #1 art
+// + horizontal cover strip for #2-10. Designed to stop scrolls in iMessage /
+// Twitter / etc.
 function top10Image(name: string, ranked: Ranked, total: number) {
   const top10 = ranked.slice(0, 10);
   const number1 = top10[0];
+  const rest = top10.slice(1);
+  const number1Score = number1
+    ? formatScore(rankToScore(number1.displayRank, total))
+    : "";
 
   return new ImageResponse(
     (
@@ -63,25 +69,43 @@ function top10Image(name: string, ranked: Ranked, total: number) {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: `radial-gradient(circle at top right, ${SURFACE} 0%, ${BG} 60%)`,
+          background: BG,
           color: "white",
           fontFamily: "sans-serif",
-          padding: "44px 52px",
+          padding: "40px 56px",
+          position: "relative",
         }}
       >
+        {/* Subtle red glow behind #1 cover for visual energy */}
+        <div
+          style={{
+            position: "absolute",
+            top: 100,
+            right: 40,
+            width: 480,
+            height: 480,
+            background: ACCENT,
+            opacity: 0.18,
+            filter: "blur(120px)",
+            borderRadius: "50%",
+            display: "flex",
+          }}
+        />
+
+        {/* Brand strip */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 14,
+            zIndex: 10,
           }}
         >
           <div
             style={{
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: 800,
-              letterSpacing: "0.2em",
+              letterSpacing: "0.22em",
               textTransform: "uppercase",
               display: "flex",
             }}
@@ -92,37 +116,41 @@ function top10Image(name: string, ranked: Ranked, total: number) {
           </div>
           <div
             style={{
-              fontSize: 15,
+              fontSize: 14,
               color: MUTED,
               display: "flex",
-              fontFamily: "monospace",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
             }}
           >
             {total} song{total === 1 ? "" : "s"} ranked
           </div>
         </div>
 
+        {/* Hero: huge name + #1 cover */}
         <div
           style={{
             display: "flex",
-            alignItems: "stretch",
-            gap: 24,
-            marginBottom: 16,
+            flex: 1,
+            alignItems: "center",
+            gap: 36,
+            marginTop: 8,
+            zIndex: 10,
           }}
         >
           <div
             style={{
+              flex: 1,
               display: "flex",
               flexDirection: "column",
               justifyContent: "center",
-              flex: 1,
             }}
           >
             <div
               style={{
                 fontSize: 18,
                 fontWeight: 800,
-                letterSpacing: "0.22em",
+                letterSpacing: "0.28em",
                 textTransform: "uppercase",
                 color: ACCENT_SOFT,
                 display: "flex",
@@ -132,185 +160,188 @@ function top10Image(name: string, ranked: Ranked, total: number) {
             </div>
             <div
               style={{
-                fontSize: 64,
+                fontSize: 96,
                 fontWeight: 900,
-                lineHeight: 0.95,
-                marginTop: 6,
+                lineHeight: 0.92,
+                marginTop: 4,
                 display: "flex",
-                letterSpacing: "-0.02em",
+                letterSpacing: "-0.04em",
               }}
             >
               {name}&apos;s
             </div>
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 600,
+                color: MUTED,
+                marginTop: 4,
+                display: "flex",
+              }}
+            >
+              Eminem songs
+            </div>
+
             {number1 && (
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  marginTop: 18,
+                  marginTop: 28,
+                  paddingLeft: 14,
+                  borderLeft: `4px solid ${GOLD}`,
                 }}
               >
                 <div
                   style={{
                     fontSize: 13,
-                    fontWeight: 700,
-                    letterSpacing: "0.2em",
+                    fontWeight: 800,
+                    letterSpacing: "0.22em",
                     textTransform: "uppercase",
                     color: GOLD,
                     display: "flex",
                   }}
                 >
-                  #1 — {formatScore(rankToScore(number1.displayRank, total))}
+                  #1 · {number1Score}
                 </div>
                 <div
                   style={{
-                    fontSize: 32,
+                    fontSize: 30,
                     fontWeight: 800,
                     lineHeight: 1.05,
                     marginTop: 4,
                     display: "flex",
                   }}
                 >
-                  {number1.song.title.slice(0, 32)}
+                  {number1.song.title.slice(0, 36)}
                 </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: 16,
                     color: MUTED,
                     marginTop: 2,
                     display: "flex",
                   }}
                 >
-                  {number1.song.primaryArtist.slice(0, 32)}
+                  {number1.song.primaryArtist.slice(0, 36)}
                 </div>
               </div>
             )}
           </div>
-          {number1?.song.artUrl && (
+
+          {number1?.song.artUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={number1.song.artUrl}
-              width={220}
-              height={220}
+              width={340}
+              height={340}
               style={{
-                borderRadius: 16,
-                border: `3px solid ${GOLD}`,
-                boxShadow: `0 0 60px rgba(251,191,36,0.25)`,
+                borderRadius: 18,
+                border: `4px solid ${GOLD}`,
+                boxShadow: "0 30px 60px rgba(0,0,0,0.6)",
               }}
               alt=""
+            />
+          ) : (
+            <div
+              style={{
+                width: 340,
+                height: 340,
+                borderRadius: 18,
+                background: SURFACE,
+                border: `4px solid ${BORDER}`,
+                display: "flex",
+              }}
             />
           )}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            flex: 1,
-          }}
-        >
-          {top10.slice(1).map((r) => {
-            const score = rankToScore(r.displayRank, total);
-            return (
-              <div
-                key={r.song.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  background: SURFACE,
-                  border: `1px solid ${BORDER}`,
-                }}
-              >
-                <div
-                  style={{
-                    width: 32,
-                    fontSize: 18,
-                    fontWeight: 700,
-                    fontFamily: "monospace",
-                    color: MUTED,
-                    textAlign: "center",
-                    display: "flex",
-                    justifyContent: "center",
-                  }}
-                >
-                  {r.displayRank}
-                </div>
-                {r.song.artUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={r.song.artUrl}
-                    width={36}
-                    height={36}
-                    style={{ borderRadius: 6 }}
-                    alt=""
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 6,
-                      background: SURFACE_2,
-                      display: "flex",
-                    }}
-                  />
-                )}
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 600,
-                    flex: 1,
-                    display: "flex",
-                  }}
-                >
-                  {r.song.title.slice(0, 50)}
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: MUTED,
-                    display: "flex",
-                    minWidth: 100,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {r.song.primaryArtist.slice(0, 18)}
-                </div>
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 800,
-                    fontFamily: "monospace",
-                    color: colorFor(score),
-                    minWidth: 50,
-                    textAlign: "right",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {formatScore(score)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
+        {/* Bottom strip: #2-10 covers with rank badges */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginTop: 12,
+            gap: 8,
+            marginTop: 18,
+            zIndex: 10,
+          }}
+        >
+          {rest.map((r) => (
+            <div
+              key={r.song.id}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              {r.song.artUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={r.song.artUrl}
+                  width={94}
+                  height={94}
+                  style={{
+                    borderRadius: 8,
+                    border: `1px solid ${BORDER}`,
+                  }}
+                  alt=""
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 94,
+                    height: 94,
+                    borderRadius: 8,
+                    background: SURFACE,
+                    border: `1px solid ${BORDER}`,
+                    display: "flex",
+                  }}
+                />
+              )}
+              <div
+                style={{
+                  position: "absolute",
+                  top: -10,
+                  left: -10,
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: BG,
+                  border: `2px solid ${ACCENT}`,
+                  fontSize: 14,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {r.displayRank}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: 16,
             fontSize: 13,
             color: MUTED,
+            zIndex: 10,
           }}
         >
           <div style={{ display: "flex" }}>eminem-belly.vercel.app</div>
-          <div style={{ display: "flex", color: ACCENT_SOFT }}>↗ rank yours</div>
+          <div style={{ display: "flex", color: ACCENT_SOFT }}>
+            ↗ rank yours
+          </div>
         </div>
       </div>
     ),
