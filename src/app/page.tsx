@@ -174,17 +174,19 @@ function ChoiceCard({
         </button>
       </form>
 
-      {/* Top-right corner cluster: play + save */}
+      {/* Top-right corner cluster: play + save. Keys must be unique among
+          siblings — sharing key={song.id} between two different components
+          confuses React reconciliation and leaves stale DOM behind. */}
       <div className="absolute right-3 top-3 z-10 flex flex-col gap-2 sm:right-4 sm:top-4">
         <PlayPreview
-          key={song.id}
+          key={`play-${song.id}`}
           songId={song.id}
           hasPreview={!!song.previewUrl}
           title={song.title}
           artist={song.primaryArtist}
         />
         <SaveButton
-          key={song.id}
+          key={`save-${song.id}`}
           songId={song.id}
           initialSaved={isSaved}
           size="sm"
