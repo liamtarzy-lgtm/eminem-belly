@@ -73,9 +73,12 @@ export function PlayPreview({
       audio.removeEventListener("ended", onEnd);
       audio.removeEventListener("pause", onEnd);
       audio.removeEventListener("error", onEnd);
+      // If we're unmounting while this audio is the active one, clear the
+      // singleton AND notify subscribers so the NowPlaying pill hides too.
       if (current?.audio === audio) {
         audio.pause();
         current = null;
+        notifyAll();
       }
     };
   }, []);

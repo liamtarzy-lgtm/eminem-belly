@@ -6,7 +6,9 @@ type Size = "sm" | "md" | "lg";
 const dims: Record<Size, { box: string; px: number }> = {
   sm: { box: "h-12 w-12", px: 96 },
   md: { box: "h-24 w-24", px: 192 },
-  lg: { box: "h-64 w-64 sm:h-72 sm:w-72", px: 600 },
+  // Smaller on mobile (140px) so two stacked compare cards fit in one screen;
+  // jumps to ~280px on desktop where vertical space is plentiful.
+  lg: { box: "h-36 w-36 sm:h-72 sm:w-72", px: 600 },
 };
 
 export function SongImage({

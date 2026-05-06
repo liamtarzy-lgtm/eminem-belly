@@ -45,8 +45,8 @@ export default async function HomePage() {
   const { sessionId, target, opponent, progress } = step;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 pb-6 pt-3 sm:px-6 sm:pt-6">
-      <div className="mb-4 flex items-center justify-between gap-3 px-1">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 pb-3 pt-2 sm:px-6 sm:pt-6 sm:pb-6">
+      <div className="mb-2 flex items-center justify-between gap-3 px-1 sm:mb-4">
         <div className="min-w-0 flex items-center gap-2.5">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--accent-soft)">
             placing
@@ -68,7 +68,7 @@ export default async function HomePage() {
         </div>
       </div>
 
-      <h1 className="px-1 pb-4 text-center text-2xl font-bold tracking-tight sm:text-4xl">
+      <h1 className="px-1 pb-2 text-center text-xl font-bold tracking-tight sm:pb-4 sm:text-4xl">
         Which one&apos;s better?
       </h1>
 
@@ -94,13 +94,13 @@ export default async function HomePage() {
         />
       </div>
 
-      <div className="mt-5 flex items-center justify-center text-sm">
+      <div className="mt-3 flex items-center justify-center text-sm sm:mt-5">
         <form action={tooToughForm}>
           <input type="hidden" name="sessionId" value={sessionId} />
           <input type="hidden" name="opponentSongId" value={opponent.id} />
           <button
             type="submit"
-            className="flex items-center gap-1.5 rounded-full border border-(--accent)/50 bg-(--accent)/10 px-5 py-2 text-sm font-medium text-(--accent-soft) transition hover:border-(--accent) hover:bg-(--accent)/20 active:scale-95"
+            className="flex items-center gap-1.5 rounded-full border border-(--accent)/50 bg-(--accent)/10 px-4 py-1.5 text-xs font-medium text-(--accent-soft) transition hover:border-(--accent) hover:bg-(--accent)/20 active:scale-95 sm:px-5 sm:py-2 sm:text-sm"
           >
             ⚖ too tough — call it a tie
           </button>
@@ -201,12 +201,12 @@ function ChoiceCard({
         />
         <button
           type="submit"
-          className="group relative flex w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-(--border) bg-(--surface) p-4 text-center transition active:scale-[0.985] hover:border-(--accent) hover:bg-(--surface-2) hover:shadow-2xl hover:shadow-(--accent)/15 sm:gap-5 sm:p-8 min-h-[42vh] sm:min-h-[55vh]"
+          className="group relative flex w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-(--border) bg-(--surface) p-3 text-center transition active:scale-[0.985] hover:border-(--accent) hover:bg-(--surface-2) hover:shadow-2xl hover:shadow-(--accent)/15 sm:gap-5 sm:p-8 sm:min-h-[55vh]"
         >
           <div className="absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-(--accent) transition-transform duration-300 group-hover:scale-x-100" />
           <SongImage song={song} size="lg" />
-          <div className="flex w-full flex-col items-center gap-1 px-1">
-            <div className="line-clamp-2 text-lg font-bold leading-tight sm:text-2xl">
+          <div className="flex w-full flex-col items-center gap-0.5 px-1 sm:gap-1">
+            <div className="line-clamp-2 text-base font-bold leading-tight sm:text-2xl">
               {song.title}
             </div>
             <div className="line-clamp-1 text-sm text-(--muted)">

@@ -104,19 +104,47 @@ export async function getSongInRangeExcluding(
   return candidates[0];
 }
 
+// Normalizes user input to ASCII-safe lowercase: strips curly/straight
+// apostrophes + quotes so "don't front" matches "Don't Front" (which is
+// stored with a curly U+2019 apostrophe).
+function normalizeSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[‘’‚‛′ʼ`´'"“”„″]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Same normalization expressed in SQL so the column side strips the same
+// quote variants before LIKE matches.
+function normSqlExpr(
+  col: typeof schema.songs.title | typeof schema.songs.primaryArtist | typeof schema.songs.album,
+) {
+  return sql`replace(replace(replace(replace(replace(replace(lower(${col}), char(39), ''), char(34), ''), char(8216), ''), char(8217), ''), char(8220), ''), char(8221), '')`;
+}
+
 export async function searchCatalog(query: string, limit = 20) {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
-  const pattern = `%${trimmed}%`;
+  const normalized = normalizeSearch(query);
+  if (!normalized) return [];
+  const tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  // For each token, it must appear in title OR artist OR album. AND across
+  // tokens — so "lose yourself" matches but "yourself lose" does too, while
+  // "lose pizza" returns nothing.
+  const titleN = normSqlExpr(schema.songs.title);
+  const artistN = normSqlExpr(schema.songs.primaryArtist);
+  const albumN = normSqlExpr(schema.songs.album);
+
+  const conditions = tokens.map((t) => {
+    const pat = `%${t}%`;
+    return sql`(${titleN} LIKE ${pat} OR ${artistN} LIKE ${pat} OR ${albumN} LIKE ${pat})`;
+  });
+
   return db
     .select()
     .from(schema.songs)
-    .where(
-      or(
-        like(schema.songs.title, pattern),
-        like(schema.songs.primaryArtist, pattern),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(
       desc(eq(schema.songs.eminemRole, "primary")),
       asc(schema.songs.title),

@@ -110,6 +110,13 @@ type Appearance = {
   albumReleaseDate: string | null;
 };
 
+// Albums NOT in Eminem's Deezer artist page that should still be pulled —
+// "Various Artists" comps + soundtracks where Eminem has solo tracks. Eminem-
+// credited tracks from these get added; non-Eminem tracks are skipped.
+const SUPPLEMENTAL_ALBUM_IDS: number[] = [
+  371899, // 8 Mile (Music From And Inspired By The Motion Picture)
+];
+
 // ─── Phase 1: Primary tracks via Deezer ────────────────────────────────
 async function pullDeezerPrimary(): Promise<{
   rows: NewSong[];
@@ -125,10 +132,31 @@ async function pullDeezerPrimary(): Promise<{
   }
   console.log(`  raw album count: ${albums.length}`);
 
-  // Sort albums chronologically (earliest first) so the original studio
-  // version of any track is processed before later compilations / re-issues.
+  const supplementalIds = new Set<number>();
+  for (const id of SUPPLEMENTAL_ALBUM_IDS) {
+    try {
+      const a = await dzFetch<DzAlbum>(`/album/${id}`);
+      albums.push(a);
+      supplementalIds.add(a.id);
+      console.log(`  + supplemental: ${a.title}`);
+    } catch (e) {
+      console.warn(
+        `  ! supplemental album ${id} failed:`,
+        (e as Error).message,
+      );
+    }
+  }
+
+  // Include singles too — many Eminem tracks (Detroit Vs Everybody,
+  // Killshot, Campaign Speech, etc.) only ship as singles. The deezerJunk
+  // filter still drops obvious variants (remixes, edits) inside them.
   const sortedAlbums = albums
-    .filter((a) => a.record_type === "album" || a.record_type === "ep")
+    .filter(
+      (a) =>
+        a.record_type === "album" ||
+        a.record_type === "ep" ||
+        a.record_type === "single",
+    )
     .sort((a, b) => (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999"));
 
   // Studio originals first; compilations only as fallback for tracks that
@@ -184,8 +212,12 @@ async function pullDeezerPrimary(): Promise<{
     const tracks = tracksFromAlbum.get(album.id) ?? [];
     const canonAlbum = canonicalAlbumName(album.title);
     const albumArt = album.cover_xl ?? album.cover_big ?? null;
+    const isSupplemental = supplementalIds.has(album.id);
     for (const t of tracks) {
       if (deezerJunk(t.title, t.title_version)) continue;
+      // For supplemental "Various Artists" albums, only keep Eminem-primary
+      // tracks — otherwise we'd inherit every other artist's tracks.
+      if (isSupplemental && t.artist.id !== EMINEM_DEEZER_ID) continue;
       const titleKey = normalizeTitle(t.title);
       if (!titleKey) continue;
 
