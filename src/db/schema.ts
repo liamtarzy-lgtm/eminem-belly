@@ -59,6 +59,7 @@ export const songs = sqliteTable(
     artUrl: text("art_url"),
     previewUrl: text("preview_url"),
     deezerTrackId: integer("deezer_track_id"),
+    appleMusicTrackId: integer("apple_music_track_id"),
     durationMs: integer("duration_ms"),
     eminemRole: text("eminem_role", { enum: ["primary", "feature"] }).notNull(),
   },

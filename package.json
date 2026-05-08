@@ -13,7 +13,9 @@
     "enrich": "tsx scripts/enrich-previews.ts",
     "seed-shadyxv": "tsx scripts/seed-shadyxv.ts",
     "dedup": "tsx scripts/dedup-songs.ts",
-    "fix-titles": "tsx scripts/fix-titles.ts"
+    "fix-titles": "tsx scripts/fix-titles.ts",
+    "enrich-itunes": "tsx scripts/enrich-itunes.ts",
+    "fix-shadyxv": "tsx scripts/fix-shadyxv-previews.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",

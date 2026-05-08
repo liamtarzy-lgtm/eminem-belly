@@ -2,9 +2,13 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-// Resolves a fresh Deezer preview URL for a song and 302-redirects to it.
-// Deezer's CDN URLs are signed and expire — re-fetching at play time keeps
-// previews working long after the catalog was first enriched.
+// Returns a 30-sec audio preview for a song.
+//
+// Two sources, in order of preference:
+//   1. Deezer — URLs expire (signed), so we re-fetch a fresh URL at play
+//      time using the cached deezer_track_id.
+//   2. iTunes — URLs are stable, so we just redirect to the stored
+//      previewUrl directly.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ songId: string }> },
@@ -16,28 +20,39 @@ export async function GET(
   }
 
   const song = await db
-    .select({ deezerTrackId: schema.songs.deezerTrackId })
+    .select({
+      deezerTrackId: schema.songs.deezerTrackId,
+      previewUrl: schema.songs.previewUrl,
+    })
     .from(schema.songs)
     .where(eq(schema.songs.id, id))
     .get();
-  if (!song?.deezerTrackId) {
-    return NextResponse.json({ error: "no preview" }, { status: 404 });
+  if (!song) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  try {
-    const res = await fetch(
-      `https://api.deezer.com/track/${song.deezerTrackId}`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) {
-      return NextResponse.json({ error: "deezer failed" }, { status: 502 });
+  // Prefer Deezer when available (fresh signed URLs)
+  if (song.deezerTrackId) {
+    try {
+      const res = await fetch(
+        `https://api.deezer.com/track/${song.deezerTrackId}`,
+        { cache: "no-store" },
+      );
+      if (res.ok) {
+        const track = (await res.json()) as { preview?: string };
+        if (track.preview) {
+          return NextResponse.redirect(track.preview, 302);
+        }
+      }
+    } catch {
+      // fall through to stored URL
     }
-    const track = (await res.json()) as { preview?: string };
-    if (!track.preview) {
-      return NextResponse.json({ error: "no preview url" }, { status: 404 });
-    }
-    return NextResponse.redirect(track.preview, 302);
-  } catch {
-    return NextResponse.json({ error: "deezer unreachable" }, { status: 502 });
   }
+
+  // Fallback: stored previewUrl (e.g. iTunes for ShadyXV exclusives — stable)
+  if (song.previewUrl) {
+    return NextResponse.redirect(song.previewUrl, 302);
+  }
+
+  return NextResponse.json({ error: "no preview available" }, { status: 404 });
 }
