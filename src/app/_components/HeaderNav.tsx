@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/", label: "rank" },
   { href: "/list", label: "your list" },
+  { href: "/games", label: "games" },
 ];
 
 export function HeaderNav() {
