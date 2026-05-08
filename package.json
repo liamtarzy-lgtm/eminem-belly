@@ -17,7 +17,8 @@
     "enrich-itunes": "tsx scripts/enrich-itunes.ts",
     "fix-shadyxv": "tsx scripts/fix-shadyxv-previews.ts",
     "cleanup-junk": "tsx scripts/cleanup-junk.ts",
-    "delete-specific": "tsx scripts/delete-specific.ts"
+    "delete-specific": "tsx scripts/delete-specific.ts",
+    "auto-segment": "tsx scripts/auto-segment.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
