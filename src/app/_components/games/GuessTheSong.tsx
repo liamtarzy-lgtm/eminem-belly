@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Difficulty, SessionLength, Snippet } from "@/lib/games/types";
-import { SNIPPETS } from "@/lib/games/snippets";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import type { GameSong, CatalogEntry } from "@/lib/games/queries";
+import type { SessionLength } from "@/lib/games/types";
+import { pickDistractors } from "@/lib/games/distractors";
 import {
   computeRoundScore,
   getBestStreak,
@@ -21,7 +23,8 @@ const ANSWER_TIMEOUT_MS = 7000;
 type Phase = "start" | "loading" | "playing" | "answering" | "result" | "summary";
 
 type Round = {
-  snippet: Snippet;
+  song: GameSong;
+  segment: { start: number; end: number };
   /** [correctTitle, wrongA, wrongB, wrongC] in randomized display order. */
   choices: string[];
   correctIndex: number;
@@ -36,27 +39,33 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function buildRound(snippet: Snippet): Round {
-  const correct = snippet.songTitle;
-  const wrongs = snippet.similarWrongChoices;
-  const choices = shuffle([correct, ...wrongs]);
-  return { snippet, choices, correctIndex: choices.indexOf(correct) };
+function buildRound(song: GameSong, catalog: CatalogEntry[]): Round {
+  const segment = song.segments[Math.floor(Math.random() * song.segments.length)];
+  const distractors = pickDistractors(
+    {
+      id: song.id,
+      album: song.album,
+      year: song.year,
+      eminemRole: song.eminemRole,
+    },
+    catalog,
+    song.title,
+  );
+  const choices = shuffle([song.title, ...distractors]);
+  return { song, segment, choices, correctIndex: choices.indexOf(song.title) };
 }
 
-function pickPool(difficulty: Difficulty | "all"): Snippet[] {
-  if (difficulty === "all") return SNIPPETS;
-  return SNIPPETS.filter((s) => s.difficulty === difficulty);
-}
-
-export function GuessTheSong() {
-  // ── Setup state ─────────────────────────────────────────────────────
-  const [difficulty, setDifficulty] = useState<Difficulty | "all">("all");
+export function GuessTheSong({
+  pool,
+  catalog,
+}: {
+  pool: GameSong[];
+  catalog: CatalogEntry[];
+}) {
   const [sessionLength, setSessionLength] = useState<SessionLength>(10);
   const [phase, setPhase] = useState<Phase>("start");
 
-  // ── In-game state ───────────────────────────────────────────────────
-  const [pool, setPool] = useState<Snippet[]>([]);
-  const [usedIds, setUsedIds] = useState<Set<string>>(new Set());
+  const [usedIds, setUsedIds] = useState<Set<number>>(new Set());
   const [round, setRound] = useState<Round | null>(null);
   const [roundIndex, setRoundIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -67,7 +76,6 @@ export function GuessTheSong() {
   const [isNewHigh, setIsNewHigh] = useState(false);
   const [isNewBestStreak, setIsNewBestStreak] = useState(false);
 
-  const [audioReady, setAudioReady] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [replayUsed, setReplayUsed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(ANSWER_TIMEOUT_MS);
@@ -84,7 +92,14 @@ export function GuessTheSong() {
     setBestStreakState(getBestStreak(GAME_ID));
   }, []);
 
-  // ── Audio control ───────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      if (answerTimerRef.current) clearInterval(answerTimerRef.current);
+      if (audioRef.current) audioRef.current.pause();
+    };
+  }, []);
+
   function clearTimers() {
     if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
     if (answerTimerRef.current) clearInterval(answerTimerRef.current);
@@ -107,57 +122,65 @@ export function GuessTheSong() {
     }, 100);
   }
 
-  async function playSnippet(snippet: Snippet, isReplay = false) {
+  async function playSegment(r: Round, isReplay = false) {
     setAudioError(null);
     const audio = audioRef.current;
     if (!audio) return;
-    audio.src = snippet.audioSrc;
-    audio.currentTime = snippet.startTimeSeconds ?? 0;
-    setAudioReady(false);
+    audio.src = `/api/preview/${r.song.id}?t=${Date.now()}`;
+    setPhase("loading");
     try {
+      // Wait until audio can seek
+      await new Promise<void>((resolve, reject) => {
+        const onCan = () => {
+          audio.removeEventListener("canplay", onCan);
+          audio.removeEventListener("error", onErr);
+          resolve();
+        };
+        const onErr = () => {
+          audio.removeEventListener("canplay", onCan);
+          audio.removeEventListener("error", onErr);
+          reject(new Error("audio failed to load"));
+        };
+        audio.addEventListener("canplay", onCan);
+        audio.addEventListener("error", onErr);
+        audio.load();
+      });
+      audio.currentTime = r.segment.start;
       await audio.play();
-      setAudioReady(true);
       if (!isReplay) setPhase("playing");
-      // Auto-stop after the snippet duration
-      const dur = (snippet.durationSeconds ?? 2) * 1000;
+      const duration = (r.segment.end - r.segment.start) * 1000;
       stopTimerRef.current = setTimeout(() => {
         audio.pause();
-        // After snippet ends, give user the answer window
         if (!isReplay) {
           setPhase("answering");
           startAnswerCountdown();
         }
-      }, dur);
+      }, duration);
     } catch {
       setAudioError(
-        "Couldn't load the audio clip. The file at " +
-          snippet.audioSrc +
-          " is missing or your browser blocked playback. Replace placeholder audio in /public/audio/eminem/ to enable this round.",
+        "Couldn't load the snippet. Skip this round or try again later.",
       );
-      // Fall through to the answer phase anyway so the user can move on
       setPhase("answering");
       startAnswerCountdown();
     }
   }
 
-  function startNextRound(currentPool: Snippet[], currentUsedIds: Set<string>) {
-    const remaining = currentPool.filter((s) => !currentUsedIds.has(s.id));
+  function startNextRound(currentUsedIds: Set<number>) {
+    const remaining = pool.filter((s) => !currentUsedIds.has(s.id));
     if (remaining.length === 0) {
-      // Out of unique snippets — end the session
       finishGame();
       return;
     }
-    const snippet = remaining[Math.floor(Math.random() * remaining.length)];
-    const newRound = buildRound(snippet);
+    const next = remaining[Math.floor(Math.random() * remaining.length)];
+    const newRound = buildRound(next, catalog);
     setRound(newRound);
-    setUsedIds(new Set([...currentUsedIds, snippet.id]));
+    setUsedIds(new Set([...currentUsedIds, next.id]));
     setRoundIndex((i) => i + 1);
     setReplayUsed(false);
     setPickedIndex(null);
     setTimedOut(false);
     setResultPoints(0);
-    setPhase("loading");
-    void playSnippet(snippet);
+    void playSegment(newRound);
   }
 
   function finalizeRound(choiceIndex: number | null, didTimeOut = false) {
@@ -179,7 +202,7 @@ export function GuessTheSong() {
     setPhase("result");
     trackEvent("question_answered", {
       gameId: GAME_ID,
-      snippetId: round.snippet.id,
+      songId: round.song.id,
       correct: isCorrect,
       timedOut: didTimeOut,
       replayUsed,
@@ -206,12 +229,6 @@ export function GuessTheSong() {
   }
 
   function startGame() {
-    const filtered = pickPool(difficulty);
-    if (filtered.length === 0) {
-      setAudioError("No snippets available for that difficulty.");
-      return;
-    }
-    setPool(filtered);
     setUsedIds(new Set());
     setRoundIndex(0);
     setCorrectCount(0);
@@ -221,10 +238,10 @@ export function GuessTheSong() {
     setIsNewBestStreak(false);
     trackEvent("game_started", {
       gameId: GAME_ID,
-      difficulty,
       sessionLength: String(sessionLength),
+      poolSize: pool.length,
     });
-    startNextRound(filtered, new Set());
+    startNextRound(new Set());
   }
 
   function handleNext() {
@@ -232,32 +249,48 @@ export function GuessTheSong() {
       finishGame();
       return;
     }
-    startNextRound(pool, usedIds);
+    startNextRound(usedIds);
   }
 
   function handleReplay() {
     if (!round || replayUsed) return;
     setReplayUsed(true);
-    trackEvent("replay_used", { gameId: GAME_ID, snippetId: round.snippet.id });
-    void playSnippet(round.snippet, true);
+    trackEvent("replay_used", { gameId: GAME_ID, songId: round.song.id });
+    void playSegment(round, true);
   }
 
-  useEffect(() => {
-    return () => {
-      clearTimers();
-      if (audioRef.current) audioRef.current.pause();
-    };
-  }, []);
+  // ── Pool gate ───────────────────────────────────────────────────────
+  if (pool.length === 0) {
+    return (
+      <div className="flex flex-col gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-amber-100 sm:p-8">
+        <div className="text-2xl font-bold tracking-tight">
+          No validated rap snippets available yet.
+        </div>
+        <p className="text-sm">
+          The Guess-the-Song game only plays from windows that have been
+          manually validated as Eminem actively rapping. Once you mark
+          some, the game pool fills automatically.
+        </p>
+        <Link
+          href="/admin/segments"
+          className="self-start rounded-lg bg-(--accent) px-5 py-2.5 font-semibold text-white hover:bg-(--accent-soft)"
+        >
+          Open the segment editor →
+        </Link>
+        <div className="text-xs text-amber-200/70">
+          (Admin only — visible to your account.)
+        </div>
+      </div>
+    );
+  }
 
-  // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4">
       <audio ref={audioRef} preload="metadata" />
 
       {phase === "start" && (
         <StartScreen
-          difficulty={difficulty}
-          setDifficulty={setDifficulty}
+          poolSize={pool.length}
           sessionLength={sessionLength}
           setSessionLength={setSessionLength}
           highScore={highScore}
@@ -283,11 +316,11 @@ export function GuessTheSong() {
 
             <SnippetPad
               phase={phase}
-              audioReady={audioReady}
               audioError={audioError}
               timeLeft={timeLeft}
               replayUsed={replayUsed}
               onReplay={handleReplay}
+              segmentLength={round.segment.end - round.segment.start}
             />
 
             <ChoiceGrid
@@ -299,29 +332,29 @@ export function GuessTheSong() {
             />
 
             {phase === "result" && (
-              <AnswerFeedback
-                variant={
-                  pickedIndex !== null && pickedIndex === round.correctIndex
-                    ? "correct"
-                    : timedOut
-                      ? "timeout"
-                      : "wrong"
-                }
-                correctAnswer={round.snippet.songTitle}
-                meta={`${round.snippet.album} · ${round.snippet.year}`}
-                funFact={round.snippet.funFact}
-                pointsEarned={resultPoints}
-              />
-            )}
-
-            {phase === "result" && (
-              <button
-                type="button"
-                onClick={handleNext}
-                className="rounded-lg bg-(--accent) px-5 py-3 font-semibold text-white hover:bg-(--accent-soft)"
-              >
-                Next →
-              </button>
+              <>
+                <AnswerFeedback
+                  variant={
+                    pickedIndex !== null && pickedIndex === round.correctIndex
+                      ? "correct"
+                      : timedOut
+                        ? "timeout"
+                        : "wrong"
+                  }
+                  correctAnswer={round.song.title}
+                  meta={[round.song.album, round.song.year]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  pointsEarned={resultPoints}
+                />
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="rounded-lg bg-(--accent) px-5 py-3 font-semibold text-white hover:bg-(--accent-soft)"
+                >
+                  Next →
+                </button>
+              </>
             )}
           </>
         )}
@@ -342,28 +375,23 @@ export function GuessTheSong() {
   );
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────
 
 function StartScreen({
-  difficulty,
-  setDifficulty,
+  poolSize,
   sessionLength,
   setSessionLength,
   highScore,
   bestStreak,
   onStart,
 }: {
-  difficulty: Difficulty | "all";
-  setDifficulty: (d: Difficulty | "all") => void;
+  poolSize: number;
   sessionLength: SessionLength;
   setSessionLength: (l: SessionLength) => void;
   highScore: number;
   bestStreak: number;
   onStart: () => void;
 }) {
-  const placeholderHint = SNIPPETS.some((s) =>
-    s.songTitle.startsWith("REPLACE"),
-  );
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-(--border) bg-(--surface) p-6 sm:p-8">
       <div>
@@ -371,34 +399,35 @@ function StartScreen({
           Guess the Song in 2 Seconds
         </h1>
         <p className="mt-1 text-sm text-(--muted)">
-          A 2-second clip of Eminem rapping. Pick the song from four choices.
-          Faster answers and longer streaks score higher.
+          Two seconds of Eminem rapping. Pick the song from four similar
+          choices. Faster + longer streaks = higher score.
+        </p>
+        <p className="mt-2 text-xs text-(--muted)">
+          {poolSize} song{poolSize === 1 ? "" : "s"} in the pool.
         </p>
       </div>
 
-      <ChooserRow label="Difficulty">
-        {(["all", "easy", "medium", "hard"] as const).map((d) => (
-          <ChoiceChip
-            key={d}
-            active={difficulty === d}
-            onClick={() => setDifficulty(d)}
-          >
-            {d}
-          </ChoiceChip>
-        ))}
-      </ChooserRow>
-
-      <ChooserRow label="Rounds">
-        {([5, 10, "endless"] as SessionLength[]).map((s) => (
-          <ChoiceChip
-            key={String(s)}
-            active={sessionLength === s}
-            onClick={() => setSessionLength(s)}
-          >
-            {s}
-          </ChoiceChip>
-        ))}
-      </ChooserRow>
+      <div>
+        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-(--muted)">
+          Rounds
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([5, 10, "endless"] as SessionLength[]).map((s) => (
+            <button
+              key={String(s)}
+              type="button"
+              onClick={() => setSessionLength(s)}
+              className={
+                sessionLength === s
+                  ? "rounded-full bg-(--accent) px-4 py-1.5 text-sm font-semibold text-white"
+                  : "rounded-full border border-(--border) bg-(--surface-2) px-4 py-1.5 text-sm text-(--muted) hover:border-(--accent-soft) hover:text-foreground"
+              }
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 rounded-lg bg-(--surface-2) p-3 text-center text-sm">
         <div>
@@ -422,73 +451,24 @@ function StartScreen({
       >
         Start
       </button>
-
-      {placeholderHint && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-          ⚠ This game ships with placeholder rounds. Add your own audio
-          snippets to <code>public/audio/eminem/</code> and edit{" "}
-          <code>src/lib/games/snippets.ts</code> to play with real questions.
-        </div>
-      )}
     </div>
-  );
-}
-
-function ChooserRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-(--muted)">
-        {label}
-      </div>
-      <div className="flex flex-wrap gap-2">{children}</div>
-    </div>
-  );
-}
-
-function ChoiceChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? "rounded-full bg-(--accent) px-4 py-1.5 text-sm font-semibold text-white"
-          : "rounded-full border border-(--border) bg-(--surface-2) px-4 py-1.5 text-sm text-(--muted) hover:border-(--accent-soft) hover:text-foreground"
-      }
-    >
-      {children}
-    </button>
   );
 }
 
 function SnippetPad({
   phase,
-  audioReady,
   audioError,
   timeLeft,
   replayUsed,
   onReplay,
+  segmentLength,
 }: {
   phase: Phase;
-  audioReady: boolean;
   audioError: string | null;
   timeLeft: number;
   replayUsed: boolean;
   onReplay: () => void;
+  segmentLength: number;
 }) {
   const pct = Math.max(0, Math.min(100, (timeLeft / 7000) * 100));
   return (
@@ -508,7 +488,7 @@ function SnippetPad({
               {phase === "loading"
                 ? "loading clip…"
                 : phase === "playing"
-                  ? "listening… 2 sec"
+                  ? `listening… ${segmentLength.toFixed(1)}s`
                   : phase === "answering"
                     ? "answer below"
                     : "result"}
@@ -516,9 +496,7 @@ function SnippetPad({
             <div className="text-xs text-(--muted)">
               {phase === "answering"
                 ? `${(timeLeft / 1000).toFixed(1)}s to answer`
-                : audioReady
-                  ? "snippet played"
-                  : "preparing audio"}
+                : "preparing audio"}
             </div>
           </div>
         </div>

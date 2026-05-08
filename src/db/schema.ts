@@ -61,6 +61,14 @@ export const songs = sqliteTable(
     deezerTrackId: integer("deezer_track_id"),
     appleMusicTrackId: integer("apple_music_track_id"),
     durationMs: integer("duration_ms"),
+    // Manually-curated 2-second windows within the song's preview that
+    // contain Eminem actually rapping. Used by the "Guess the Song" game
+    // so we never play a hook, intro, skit, or instrumental snippet.
+    // Each entry: { start, end } in seconds (relative to the preview).
+    validatedRapSegments: text("validated_rap_segments", { mode: "json" })
+      .$type<Array<{ start: number; end: number; confidence?: string }>>()
+      .notNull()
+      .default(sql`'[]'`),
     eminemRole: text("eminem_role", { enum: ["primary", "feature"] }).notNull(),
   },
   (t) => [

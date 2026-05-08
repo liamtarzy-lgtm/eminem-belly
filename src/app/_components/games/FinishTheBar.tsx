@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { Difficulty, Lyric, SessionLength } from "@/lib/games/types";
 import { LYRICS } from "@/lib/games/lyrics";
 import { checkAnswer } from "@/lib/games/fuzzy";
@@ -156,6 +157,36 @@ export function FinishTheBar() {
       return;
     }
     startNextRound(pool, usedIds);
+  }
+
+  // ── Pool gate ───────────────────────────────────────────────────────
+  if (LYRICS.length === 0) {
+    return (
+      <div className="flex flex-col gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-amber-100 sm:p-8">
+        <div className="text-2xl font-bold tracking-tight">
+          Finish the Bar requires lyric prompt data.
+        </div>
+        <p className="text-sm">
+          The full game framework is wired up — scoring, fuzzy matching,
+          hints, streak tracking, accessibility — but no lyric prompts are
+          available yet. Lyric content has to be added manually with
+          appropriate rights; we don&apos;t scrape or fetch it.
+        </p>
+        <p className="text-xs text-amber-200/70">
+          Add entries to{" "}
+          <code className="rounded bg-amber-500/10 px-1">
+            src/lib/games/lyrics.ts
+          </code>{" "}
+          to activate this game.
+        </p>
+        <Link
+          href="/games"
+          className="self-start rounded-lg bg-(--accent) px-5 py-2.5 font-semibold text-white hover:bg-(--accent-soft)"
+        >
+          ← back to games
+        </Link>
+      </div>
+    );
   }
 
   return (
