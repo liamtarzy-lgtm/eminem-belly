@@ -11,7 +11,9 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "enrich": "tsx scripts/enrich-previews.ts",
-    "seed-shadyxv": "tsx scripts/seed-shadyxv.ts"
+    "seed-shadyxv": "tsx scripts/seed-shadyxv.ts",
+    "dedup": "tsx scripts/dedup-songs.ts",
+    "fix-titles": "tsx scripts/fix-titles.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",

@@ -69,12 +69,25 @@ export function formatScore(score: number): string {
   return score.toFixed(1);
 }
 
-// Tailwind classes for the score badge: text + border colors keyed to score band.
-// Gold for elite, accent red for very good, neutral white for mid, muted for low.
+// Score is mapped via inverse-normal CDF with stdev = 1.5 (see Z_SCALE
+// above). So 1 stdev above the mean = 6.5, 1 below = 3.5. Color bands
+// follow that: green for ≥1σ above, yellow within ±1σ, red below.
 export function scoreClasses(score: number): { text: string; border: string; bg: string } {
-  if (score >= 8) return { text: "text-amber-300", border: "border-amber-400/40", bg: "bg-amber-400/10" };
-  if (score >= 6.5) return { text: "text-(--accent-soft)", border: "border-(--accent)/40", bg: "bg-(--accent)/10" };
-  if (score >= 4) return { text: "text-zinc-100", border: "border-zinc-500/40", bg: "bg-zinc-500/10" };
-  if (score >= 2) return { text: "text-zinc-400", border: "border-zinc-600/40", bg: "bg-zinc-600/10" };
-  return { text: "text-zinc-500", border: "border-zinc-700/40", bg: "bg-zinc-700/10" };
+  if (score >= 6.5)
+    return {
+      text: "text-emerald-400",
+      border: "border-emerald-500/40",
+      bg: "bg-emerald-500/10",
+    };
+  if (score >= 3.5)
+    return {
+      text: "text-amber-300",
+      border: "border-amber-400/40",
+      bg: "bg-amber-400/10",
+    };
+  return {
+    text: "text-rose-400",
+    border: "border-rose-500/40",
+    bg: "bg-rose-500/10",
+  };
 }

@@ -87,7 +87,7 @@ export function SearchAddSong() {
           onKeyDown={(e) => {
             if (e.key === "Escape") reset();
           }}
-          placeholder="Search for an Eminem song..."
+          placeholder="Search an Eminem song to rank..."
           className="w-full rounded-lg border border-(--border) bg-(--surface) px-4 py-3 pr-10 outline-none focus:border-(--accent) placeholder:text-(--muted)"
         />
         {query && (

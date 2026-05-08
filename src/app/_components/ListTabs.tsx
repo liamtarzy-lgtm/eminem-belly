@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 const TABS = [
-  { view: "albums", label: "Albums", href: "/list" },
-  { view: "songs", label: "Songs", href: "/list?view=songs" },
+  { view: "songs", label: "Songs", href: "/list" },
+  { view: "albums", label: "Albums", href: "/list?view=albums" },
   { view: "tiers", label: "Tiers", href: "/list?view=tiers" },
   { view: "saved", label: "Saved", href: "/list?view=saved" },
 ] as const;

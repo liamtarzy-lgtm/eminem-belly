@@ -13,6 +13,7 @@ import { getSavedSongIds } from "@/lib/ranking/queries";
 import { SongImage } from "./_components/SongImage";
 import { PlayPreview } from "./_components/PlayPreview";
 import { SaveButton } from "./_components/SaveButton";
+import { SearchAddSong } from "./_components/SearchAddSong";
 
 export default async function HomePage() {
   const step = await getOrStartNextStep();
@@ -46,6 +47,9 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 pb-3 pt-2 sm:px-6 sm:pt-6 sm:pb-6">
+      <div className="mb-3 sm:mb-4">
+        <SearchAddSong />
+      </div>
       <div className="mb-2 flex items-center justify-between gap-3 px-1 sm:mb-4">
         <div className="min-w-0 flex items-center gap-2.5">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--accent-soft)">

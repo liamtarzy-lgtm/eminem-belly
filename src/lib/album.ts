@@ -1,3 +1,10 @@
+// Specific known album names that need the apostrophe added (Deezer drops it
+// in some cases). Applied AFTER suffix stripping.
+const APOSTROPHE_FIXES: Array<[RegExp, string]> = [
+  [/^Devils Night$/i, "Devil's Night"],
+  [/^D 12 World$/i, "D-12 World"],
+];
+
 // Strips edition/anniversary/deluxe suffixes so songs from "MMLP" and
 // "MMLP (Deluxe)" are attributed to the same canonical album name.
 export function canonicalAlbumName(name: string): string {
@@ -13,6 +20,12 @@ export function canonicalAlbumName(name: string): string {
   n = n.replace(/\s*[\(\[]coup\s+de\s+gr[âa]ce[\)\]]/gi, "");
   // Collapse repeated whitespace
   n = n.replace(/\s+/g, " ").trim();
+  for (const [pat, replacement] of APOSTROPHE_FIXES) {
+    if (pat.test(n)) {
+      n = n.replace(pat, replacement);
+      break;
+    }
+  }
   return n;
 }
 

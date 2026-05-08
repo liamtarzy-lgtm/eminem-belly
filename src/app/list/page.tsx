@@ -9,7 +9,6 @@ import {
   getStats,
 } from "@/lib/ranking/queries";
 import { RankingList } from "../_components/RankingList";
-import { SearchAddSong } from "../_components/SearchAddSong";
 import { AlbumList } from "../_components/AlbumList";
 import { ListTabs } from "../_components/ListTabs";
 import { StatStrip } from "../_components/StatStrip";
@@ -26,13 +25,13 @@ export default async function ListPage({
 }) {
   const params = await searchParams;
   const view: View =
-    params.view === "songs"
-      ? "songs"
+    params.view === "albums"
+      ? "albums"
       : params.view === "tiers"
         ? "tiers"
         : params.view === "saved"
           ? "saved"
-          : "albums";
+          : "songs";
 
   const userId = await getCurrentUserId();
   const [ranking, albumRankings, activeSession, stats, savedIds, savedSongs] =
@@ -56,8 +55,6 @@ export default async function ListPage({
       </Link>
 
       <StatStrip stats={stats} />
-
-      <SearchAddSong />
 
       <div className="flex items-center justify-between gap-3">
         <ListTabs active={view} />

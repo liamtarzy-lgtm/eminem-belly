@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
 type View = "top10" | "full" | "tiers";
 
 const TIERS = [
-  { letter: "S", min: 9, label: "Untouchable", color: "#facc15" },
-  { letter: "A", min: 7.5, label: "Heat", color: "#fb923c" },
-  { letter: "B", min: 6, label: "Solid", color: "#dc2626" },
-  { letter: "C", min: 4.5, label: "OK", color: "#a3a3a3" },
-  { letter: "D", min: 3, label: "Skip", color: "#525252" },
-  { letter: "F", min: 0, label: "Mid", color: "#404040" },
+  { letter: "S", minPct: 0.0, maxPct: 0.1, label: "Untouchable", color: "#facc15" },
+  { letter: "A", minPct: 0.1, maxPct: 0.25, label: "Heat", color: "#fb923c" },
+  { letter: "B", minPct: 0.25, maxPct: 0.5, label: "Solid", color: "#dc2626" },
+  { letter: "C", minPct: 0.5, maxPct: 0.75, label: "OK", color: "#a3a3a3" },
+  { letter: "D", minPct: 0.75, maxPct: 0.9, label: "Skip", color: "#525252" },
+  { letter: "F", minPct: 0.9, maxPct: 1.01, label: "Mid", color: "#404040" },
 ];
 
 export async function generateMetadata({
@@ -271,13 +271,16 @@ function TiersView({
 }) {
   const buckets: ReturnType<typeof withDisplayRanks>[] = TIERS.map(() => []);
   for (const r of ranked) {
-    const score = rankToScore(r.displayRank, total);
-    const idx = TIERS.findIndex((t) => score >= t.min);
-    if (idx >= 0) buckets[idx].push(r);
+    const pct = (r.displayRank - 1) / Math.max(total, 1);
+    for (let i = 0; i < TIERS.length; i++) {
+      const t = TIERS[i];
+      if (pct >= t.minPct && pct < t.maxPct) {
+        buckets[i].push(r);
+        break;
+      }
+    }
   }
-  const visible = TIERS.map((t, i) => ({ tier: t, songs: buckets[i] })).filter(
-    (b) => b.songs.length > 0,
-  );
+  const visible = TIERS.map((t, i) => ({ tier: t, songs: buckets[i] }));
   return (
     <div className="flex flex-col gap-2">
       {visible.map(({ tier, songs }) => (
@@ -296,15 +299,25 @@ function TiersView({
               {tier.label}
             </div>
           </div>
-          <div className="flex flex-1 flex-wrap items-center gap-2 p-2 sm:gap-3 sm:p-3">
-            {songs.map((r) => (
-              <div
-                key={r.song.id}
-                title={`${r.song.title} — ${r.song.primaryArtist}`}
-              >
-                <SongImage song={r.song} size="sm" />
+          <div className="flex flex-1 flex-wrap items-start gap-2 p-2 sm:gap-3 sm:p-3">
+            {songs.length === 0 ? (
+              <div className="self-center px-2 text-xs italic text-(--muted)">
+                no songs in this tier
               </div>
-            ))}
+            ) : (
+              songs.map((r) => (
+                <div
+                  key={r.song.id}
+                  className="flex w-[64px] flex-col items-center sm:w-[80px]"
+                  title={`${r.song.title} — ${r.song.primaryArtist}`}
+                >
+                  <SongImage song={r.song} size="sm" />
+                  <div className="mt-1 line-clamp-2 text-center text-[10px] leading-tight text-(--muted)">
+                    {r.song.title}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       ))}

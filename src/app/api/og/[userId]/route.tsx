@@ -524,26 +524,30 @@ function fullListImage(name: string, ranked: Ranked, total: number) {
   );
 }
 
-// Tier list image — songs grouped by score band
+// Tier list image — percentile-based so S always has songs.
 const TIERS = [
-  { letter: "S", min: 9, label: "Untouchable", color: "#facc15" },
-  { letter: "A", min: 7.5, label: "Heat", color: "#fb923c" },
-  { letter: "B", min: 6, label: "Solid", color: "#dc2626" },
-  { letter: "C", min: 4.5, label: "OK", color: "#a3a3a3" },
-  { letter: "D", min: 3, label: "Skip", color: "#525252" },
-  { letter: "F", min: 0, label: "Mid", color: "#404040" },
+  { letter: "S", minPct: 0.0, maxPct: 0.1, label: "Untouchable", color: "#facc15" },
+  { letter: "A", minPct: 0.1, maxPct: 0.25, label: "Heat", color: "#fb923c" },
+  { letter: "B", minPct: 0.25, maxPct: 0.5, label: "Solid", color: "#dc2626" },
+  { letter: "C", minPct: 0.5, maxPct: 0.75, label: "OK", color: "#a3a3a3" },
+  { letter: "D", minPct: 0.75, maxPct: 0.9, label: "Skip", color: "#525252" },
+  { letter: "F", minPct: 0.9, maxPct: 1.01, label: "Mid", color: "#404040" },
 ];
 
 function tiersImage(name: string, ranked: Ranked, total: number) {
   const buckets: Ranked[] = TIERS.map(() => []);
   for (const r of ranked) {
-    const score = rankToScore(r.displayRank, total);
-    const idx = TIERS.findIndex((t) => score >= t.min);
-    if (idx >= 0) buckets[idx].push(r);
+    const pct = (r.displayRank - 1) / Math.max(total, 1);
+    for (let i = 0; i < TIERS.length; i++) {
+      const t = TIERS[i];
+      if (pct >= t.minPct && pct < t.maxPct) {
+        buckets[i].push(r);
+        break;
+      }
+    }
   }
-  const visible = TIERS.map((t, i) => ({ tier: t, songs: buckets[i] })).filter(
-    (b) => b.songs.length > 0,
-  );
+  // Show every tier (even empty ones) so S always renders at the top.
+  const visible = TIERS.map((t, i) => ({ tier: t, songs: buckets[i] }));
 
   return new ImageResponse(
     (
@@ -653,45 +657,85 @@ function tiersImage(name: string, ranked: Ranked, total: number) {
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   gap: 8,
                   padding: 10,
                   flex: 1,
                 }}
               >
-                {songs.slice(0, 18).map((r) =>
-                  r.song.artUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={r.song.id}
-                      src={r.song.artUrl}
-                      width={56}
-                      height={56}
-                      style={{ borderRadius: 6 }}
-                      alt=""
-                    />
-                  ) : (
+                {songs.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: MUTED,
+                      fontStyle: "italic",
+                      display: "flex",
+                      alignSelf: "center",
+                    }}
+                  >
+                    no songs in this tier
+                  </div>
+                ) : (
+                  songs.slice(0, 12).map((r) => (
                     <div
                       key={r.song.id}
                       style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 6,
-                        background: SURFACE_2,
                         display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        width: 80,
                       }}
-                    />
-                  ),
+                    >
+                      {r.song.artUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={r.song.artUrl}
+                          width={64}
+                          height={64}
+                          style={{ borderRadius: 6 }}
+                          alt=""
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 6,
+                            background: SURFACE_2,
+                            display: "flex",
+                          }}
+                        />
+                      )}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "white",
+                          marginTop: 4,
+                          textAlign: "center",
+                          width: "100%",
+                          display: "flex",
+                          justifyContent: "center",
+                          lineHeight: 1.15,
+                          maxHeight: 28,
+                          overflow: "hidden",
+                        }}
+                      >
+                        {r.song.title.slice(0, 22)}
+                      </div>
+                    </div>
+                  ))
                 )}
-                {songs.length > 18 && (
+                {songs.length > 12 && (
                   <div
                     style={{
-                      fontSize: 14,
+                      fontSize: 13,
                       color: MUTED,
                       display: "flex",
+                      alignSelf: "center",
                     }}
                   >
-                    +{songs.length - 18} more
+                    +{songs.length - 12} more
                   </div>
                 )}
               </div>
