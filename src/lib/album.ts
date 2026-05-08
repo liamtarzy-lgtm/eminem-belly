@@ -6,19 +6,19 @@ const APOSTROPHE_FIXES: Array<[RegExp, string]> = [
 ];
 
 // Strips edition/anniversary/deluxe suffixes so songs from "MMLP" and
-// "MMLP (Deluxe)" are attributed to the same canonical album name.
+// "MMLP (Deluxe)" are attributed to the same canonical album. Note we do
+// NOT strip "Expanded Edition" — those releases have bonus tracks the
+// original didn't, and merging them would pollute the original album's
+// page (e.g. "Conspiracy Freestyle" showing on the 2002 Eminem Show).
 export function canonicalAlbumName(name: string): string {
   let n = name;
   n = n.replace(/\s*[\(\[][^\)\]]*deluxe[^\)\]]*[\)\]]/gi, "");
   n = n.replace(/\s+-?\s*deluxe(\s+(version|edition))?\s*$/gi, "");
-  n = n.replace(/\s*[\(\[][^\)\]]*expanded[^\)\]]*[\)\]]/gi, "");
-  n = n.replace(/\s+-?\s*expanded(\s+edition)?\s*$/gi, "");
   n = n.replace(/\s*[\(\[][^\)\]]*\d+(st|nd|rd|th)?\s+anniversary[^\)\]]*[\)\]]/gi, "");
   n = n.replace(/\s+-?\s*\d+(st|nd|rd|th)?\s+anniversary.*$/gi, "");
   n = n.replace(/\s*[\(\[][^\)\]]*bonus[^\)\]]*[\)\]]/gi, "");
   n = n.replace(/\s+-?\s*bonus(\s+(cd|disc))?\s*$/gi, "");
   n = n.replace(/\s*[\(\[]coup\s+de\s+gr[âa]ce[\)\]]/gi, "");
-  // Collapse repeated whitespace
   n = n.replace(/\s+/g, " ").trim();
   for (const [pat, replacement] of APOSTROPHE_FIXES) {
     if (pat.test(n)) {

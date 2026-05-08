@@ -14,6 +14,10 @@ import { eq, and, sql, like } from "drizzle-orm";
 const DZ_BASE = "https://api.deezer.com";
 const ALBUM_NAME = "ShadyXV";
 const RELEASE_DATE = "2014-11-24";
+// Authoritative iTunes-hosted ShadyXV cover (the dual-mask logo). Forced
+// onto every ShadyXV row regardless of which track's art Deezer returned.
+const SHADYXV_COVER_URL =
+  "https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/a0/93/7f/a0937f91-ca3f-5ce8-e053-95eaed3d92fb/00602547130129.rgb.jpg/600x600bb.jpg";
 
 let dzCalls: number[] = [];
 async function dzFetch<T>(path: string): Promise<T> {
@@ -143,7 +147,9 @@ async function main() {
   const wiped = (wipeRes as { rowsAffected?: number }).rowsAffected ?? 0;
   if (wiped) console.log(`  wiped ${wiped} previous ShadyXV mappings`);
 
-  let albumCover: string | null = null;
+  // Force the canonical ShadyXV cover (mask logo from iTunes) so it doesn't
+  // matter which track Deezer matched first.
+  let albumCover: string | null = SHADYXV_COVER_URL;
   let processed = 0;
   let attached = 0;
   let inserted = 0;
@@ -159,7 +165,6 @@ async function main() {
       dzMatch?.album?.cover_xl ?? dzMatch?.album?.cover_big ?? null;
     const dzId = dzMatch?.id ?? null;
     if (previewUrl) withPreview++;
-    if (!albumCover && artUrl) albumCover = artUrl;
 
     // Find existing song in DB: prefer match by deezer_track_id, fall back to
     // (normalized title, normalized primary artist).
@@ -262,20 +267,14 @@ async function main() {
     }
   }
 
-  // Backfill: now that we have a confirmed album cover, update every
-  // ShadyXV song_albums row to use it.
-  if (albumCover) {
-    await db
-      .update(songAlbums)
-      .set({ albumArtUrl: albumCover })
-      .where(
-        and(
-          eq(songAlbums.albumName, ALBUM_NAME),
-          sql`${songAlbums.albumArtUrl} IS NULL`,
-        ),
-      )
-      .run();
-  }
+  // Force the canonical ShadyXV cover on every song_albums row for this
+  // album so the album list shows the mask logo, not whatever cover the
+  // first matching track had.
+  await db
+    .update(songAlbums)
+    .set({ albumArtUrl: albumCover })
+    .where(eq(songAlbums.albumName, ALBUM_NAME))
+    .run();
 
   process.stdout.write("\n");
   console.log(

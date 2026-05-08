@@ -5,10 +5,15 @@ import { canonicalAlbumName, isCompilationAlbum } from "../src/lib/album";
 
 const EMINEM_DEEZER_ID = 13;
 const D12_DEEZER_ID = 417645;
+const BAD_MEETS_EVIL_DEEZER_ID = 1272458;
 // Artists whose tracks should be treated as Eminem-primary (count toward
-// album rankings, surface in recommendations, etc.). Eminem himself + D12,
-// since Eminem is a member of D12.
-const PRIMARY_ARTIST_IDS = new Set<number>([EMINEM_DEEZER_ID, D12_DEEZER_ID]);
+// album rankings, surface in recommendations, etc.). Eminem himself, D12
+// (he's a member), and Bad Meets Evil (Eminem + Royce).
+const PRIMARY_ARTIST_IDS = new Set<number>([
+  EMINEM_DEEZER_ID,
+  D12_DEEZER_ID,
+  BAD_MEETS_EVIL_DEEZER_ID,
+]);
 const EMINEM_MBID = "b95ce3ff-3d05-4e87-9e01-c97b66af13d4";
 const USER_AGENT = "EminemBelly/0.1 ( liamtarzy@gmail.com )";
 const MB_BASE = "https://musicbrainz.org/ws/2";
@@ -116,14 +121,14 @@ type Appearance = {
 };
 
 // Albums NOT in Eminem's Deezer artist page that should still be pulled.
-// Tracks are kept if the primary artist is in PRIMARY_ARTIST_IDS (Eminem or
-// D12). Non-Eminem/D12 tracks on these albums are skipped.
+// Tracks are kept if the primary artist is in PRIMARY_ARTIST_IDS.
 const SUPPLEMENTAL_ALBUM_IDS: number[] = [
   371899, // 8 Mile (Music From And Inspired By The Motion Picture)
   121080, // Devils Night (D12, 2001)
   118871, // D-12 World (D12, 2004)
   236712952, // Devil's Night (Expanded Edition) (D12, 2021)
   321101807, // Shit On You EP (D12, 2000)
+  1126187, // Hell: The Sequel (Deluxe) — Bad Meets Evil (2011)
 ];
 
 // ─── Phase 1: Primary tracks via Deezer ────────────────────────────────
