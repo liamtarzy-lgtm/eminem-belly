@@ -2,6 +2,7 @@ import type { SavedSongRow } from "@/lib/ranking/queries";
 import { SongImage } from "./SongImage";
 import { PlayPreview } from "./PlayPreview";
 import { SaveButton } from "./SaveButton";
+import { AppleMusicLink } from "./AppleMusicLink";
 
 export function SavedList({ items }: { items: SavedSongRow[] }) {
   if (items.length === 0) {
@@ -43,7 +44,8 @@ export function SavedList({ items }: { items: SavedSongRow[] }) {
               )}
             </div>
           </div>
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <AppleMusicLink title={song.title} artist={song.primaryArtist} />
             <SaveButton songId={song.id} initialSaved size="sm" />
           </div>
         </li>

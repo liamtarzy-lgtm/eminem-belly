@@ -35,23 +35,24 @@ async function main() {
   let applied = 0;
   for (const fix of FIXES) {
     let where;
-    if ("id" in fix.match) {
-      where = eq(schema.songs.id, fix.match.id);
-    } else if ("exactTitle" in fix.match) {
-      const exactTitle = fix.match.exactTitle;
-      where = fix.match.artist
+    const m = fix.match as Record<string, unknown>;
+    if ("id" in m) {
+      where = eq(schema.songs.id, m.id as number);
+    } else if ("exactTitle" in m) {
+      const exactTitle = m.exactTitle as string;
+      where = m.artist
         ? and(
             eq(schema.songs.title, exactTitle),
-            sql`lower(${schema.songs.primaryArtist}) LIKE ${`%${fix.match.artist.toLowerCase()}%`}`,
+            sql`lower(${schema.songs.primaryArtist}) LIKE ${`%${(m.artist as string).toLowerCase()}%`}`,
           )!
         : eq(schema.songs.title, exactTitle);
     } else {
       // titleLike
-      const pat = fix.match.titleLike;
-      where = fix.match.artist
+      const pat = m.titleLike as string;
+      where = m.artist
         ? and(
             sql`${schema.songs.title} LIKE ${pat}`,
-            sql`lower(${schema.songs.primaryArtist}) LIKE ${`%${fix.match.artist.toLowerCase()}%`}`,
+            sql`lower(${schema.songs.primaryArtist}) LIKE ${`%${(m.artist as string).toLowerCase()}%`}`,
           )!
         : sql`${schema.songs.title} LIKE ${pat}`;
     }
@@ -64,14 +65,13 @@ async function main() {
     const res = await db.update(schema.songs).set(set).where(where).run();
     const affected = (res as { rowsAffected?: number }).rowsAffected ?? 0;
     if (affected) {
-      console.log(
-        `  ✓ ${affected} row(s) updated`,
-        "id" in fix.match
-          ? `id=${fix.match.id}`
-          : `title="${fix.match.exactTitle}"`,
-        "→",
-        set,
-      );
+      const label =
+        "id" in m
+          ? `id=${m.id}`
+          : "exactTitle" in m
+            ? `title="${m.exactTitle}"`
+            : `titleLike="${m.titleLike}"`;
+      console.log(`  ✓ ${affected} row(s) updated`, label, "→", set);
       applied += affected;
     }
   }

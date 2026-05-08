@@ -13,6 +13,7 @@ import { AlbumList } from "../_components/AlbumList";
 import { ListTabs } from "../_components/ListTabs";
 import { StatStrip } from "../_components/StatStrip";
 import { SavedList } from "../_components/SavedList";
+import { ExportToMusic } from "../_components/ExportToMusic";
 import { TierList } from "../_components/TierList";
 import { ShareLinkButton } from "../_components/ShareLinkButton";
 
@@ -116,6 +117,12 @@ export default async function ListPage({
               </span>
             )}
           </div>
+          <ExportToMusic
+            songs={savedSongs.map((s) => ({
+              title: s.song.title,
+              artist: s.song.primaryArtist,
+            }))}
+          />
           <SavedList items={savedSongs} />
         </section>
       )}
