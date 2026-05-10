@@ -17,15 +17,16 @@ import { createDbClient } from "../src/db/client";
 import { schema } from "../src/db";
 import { and, eq, inArray, like, or } from "drizzle-orm";
 
+// IMPORTANT: do NOT add "(Intro)" / "(Outro)" suffixed titles here unless
+// you've verified they're actual dialogue/skit (not a real Eminem rap with
+// an "Intro" suffix in the official tracklist). Premonition (Intro),
+// Stepdad (Intro), Remind Me (Intro), Alfred (Outro), and Amityville are
+// all real songs with rapping — NOT skits.
 const SKIT_TITLES = new Set([
   "outro",
   "intro",
   "shock the people (intro)",
   "another public service announcement (intro)",
-  "premonition (intro)",
-  "stepdad (intro)",
-  "alfred (outro)",
-  "remind me (intro)",
   "public service announcement 2000",
   "public service announcement",
   "curtains up (skit)",
@@ -34,7 +35,6 @@ const SKIT_TITLES = new Set([
   "steve berman (skit)",
   "ken kaniff (skit)",
   "ken kaniff",
-  "amityville",
   "interlude",
   "skit",
 ]);
