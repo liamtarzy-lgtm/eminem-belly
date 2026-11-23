@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { searchSongs, startInsertion, type Song } from "@/lib/ranking/actions";
+import {
+  searchSongs,
+  startInsertion,
+  startRecompare,
+  type SearchResult,
+} from "@/lib/ranking/actions";
 import { SongImage } from "./SongImage";
 
 export function SearchAddSong() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Song[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [addingId, setAddingId] = useState<number | null>(null);
@@ -61,16 +66,18 @@ export function SearchAddSong() {
     inputRef.current?.blur();
   };
 
-  const onAdd = (songId: number) => {
-    setAddingId(songId);
+  const onPick = (song: SearchResult) => {
+    setAddingId(song.id);
     startTransition(async () => {
-      const step = await startInsertion(songId);
-      if (step.kind === "compare") {
-        router.push("/");
-      } else {
-        reset();
-        router.refresh();
-      }
+      // Already-ranked songs get re-ranked: pulled out of the list and
+      // re-inserted via a fresh set of comparisons.
+      const step =
+        song.rank !== null
+          ? await startRecompare(song.id)
+          : await startInsertion(song.id);
+      reset();
+      if (step.kind === "compare") router.push("/");
+      router.refresh();
       setAddingId(null);
     });
   };
@@ -118,10 +125,17 @@ export function SearchAddSong() {
               key={song.id}
               type="button"
               disabled={isPending}
-              onClick={() => onAdd(song.id)}
+              onClick={() => onPick(song)}
               className="flex w-full items-center gap-3 border-b border-(--border) px-3 py-2 text-left last:border-b-0 hover:bg-(--surface-2) disabled:opacity-50"
             >
-              <SongImage song={song} size="sm" />
+              <div className="relative shrink-0">
+                <SongImage song={song} size="sm" />
+                {song.rank !== null && (
+                  <span className="absolute -left-1.5 -top-1.5 rounded-full bg-(--accent) px-1.5 py-0.5 text-[10px] font-bold tabular-nums leading-none text-white shadow">
+                    #{song.rank}
+                  </span>
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="truncate font-medium">{song.title}</div>
                 <div className="truncate text-sm text-(--muted)">
@@ -133,9 +147,18 @@ export function SearchAddSong() {
                 </div>
               </div>
               {addingId === song.id ? (
-                <span className="text-xs text-(--muted)">adding...</span>
+                <span className="shrink-0 text-xs text-(--muted)">
+                  {song.rank !== null ? "loading..." : "adding..."}
+                </span>
+              ) : song.rank !== null ? (
+                <span className="flex shrink-0 flex-col items-end leading-tight">
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    ranked #{song.rank}
+                  </span>
+                  <span className="text-[11px] text-(--accent-soft)">re-rank ↺</span>
+                </span>
               ) : (
-                <span className="text-xs text-(--accent-soft)">add +</span>
+                <span className="shrink-0 text-xs text-(--accent-soft)">add +</span>
               )}
             </button>
           ))}

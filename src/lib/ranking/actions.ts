@@ -8,12 +8,14 @@ import { getCurrentUserId } from "@/lib/session";
 import {
   getActiveSession,
   getRankingCount,
+  getRanking,
   getRankingForSong,
   getRecommendation,
   getSongAtPosition,
   getSongById,
   getSongInRangeExcluding,
   searchCatalog,
+  withDisplayRanks,
 } from "./queries";
 
 const { rankings, comparisons, insertionSessions } = schema;
@@ -615,8 +617,19 @@ export async function hasUndoTarget(): Promise<boolean> {
   return !!last;
 }
 
-export async function searchSongs(query: string): Promise<Song[]> {
-  return searchCatalog(query, 20);
+export type SearchResult = Song & {
+  /** The user's current display rank for this song, or null if unranked. */
+  rank: number | null;
+};
+
+export async function searchSongs(query: string): Promise<SearchResult[]> {
+  const songs = await searchCatalog(query, 20);
+  if (songs.length === 0) return [];
+  const userId = await getCurrentUserId();
+  // Use display ranks (tie-aware) so the number matches what /list shows.
+  const ranked = withDisplayRanks(await getRanking(userId));
+  const rankBySong = new Map(ranked.map((r) => [r.song.id, r.displayRank]));
+  return songs.map((s) => ({ ...s, rank: rankBySong.get(s.id) ?? null }));
 }
 
 export async function getNextRecommendation(
