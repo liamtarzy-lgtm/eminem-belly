@@ -12,7 +12,7 @@ export default async function SignInPage({
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-8 px-6 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight">
-          Eminem<span className="text-(--accent)"> · </span>Belly
+          Song<span className="text-(--accent)"> · </span>Ranker
         </h1>
         <p className="mt-3 text-(--muted)">
           Rank Em&apos;s catalog. Sign in to keep your list.

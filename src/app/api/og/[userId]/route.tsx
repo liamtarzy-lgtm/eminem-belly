@@ -110,9 +110,9 @@ function top10Image(name: string, ranked: Ranked, total: number) {
               display: "flex",
             }}
           >
-            <span>EMINEM</span>
+            <span>SONG</span>
             <span style={{ color: ACCENT, margin: "0 10px" }}>·</span>
-            <span>BELLY</span>
+            <span>RANKER</span>
           </div>
           <div
             style={{
@@ -338,7 +338,7 @@ function top10Image(name: string, ranked: Ranked, total: number) {
             zIndex: 10,
           }}
         >
-          <div style={{ display: "flex" }}>eminem-belly.vercel.app</div>
+          <div style={{ display: "flex" }}>songranker.com</div>
           <div style={{ display: "flex", color: ACCENT_SOFT }}>
             ↗ rank yours
           </div>
@@ -387,9 +387,9 @@ function fullListImage(name: string, ranked: Ranked, total: number) {
               display: "flex",
             }}
           >
-            <span>EMINEM</span>
+            <span>SONG</span>
             <span style={{ color: ACCENT, margin: "0 10px" }}>·</span>
-            <span>BELLY</span>
+            <span>RANKER</span>
           </div>
           <div style={{ fontSize: 14, color: MUTED, display: "flex" }}>
             {total} ranked
@@ -515,7 +515,7 @@ function fullListImage(name: string, ranked: Ranked, total: number) {
             color: MUTED,
           }}
         >
-          <div style={{ display: "flex" }}>eminem-belly.vercel.app</div>
+          <div style={{ display: "flex" }}>songranker.com</div>
           <div style={{ display: "flex", color: ACCENT_SOFT }}>↗ rank yours</div>
         </div>
       </div>
@@ -580,9 +580,9 @@ function tiersImage(name: string, ranked: Ranked, total: number) {
               display: "flex",
             }}
           >
-            <span>EMINEM</span>
+            <span>SONG</span>
             <span style={{ color: ACCENT, margin: "0 10px" }}>·</span>
-            <span>BELLY</span>
+            <span>RANKER</span>
           </div>
           <div style={{ fontSize: 14, color: MUTED, display: "flex" }}>
             tier list
@@ -752,7 +752,7 @@ function tiersImage(name: string, ranked: Ranked, total: number) {
             color: MUTED,
           }}
         >
-          <div style={{ display: "flex" }}>eminem-belly.vercel.app</div>
+          <div style={{ display: "flex" }}>songranker.com</div>
           <div style={{ display: "flex", color: ACCENT_SOFT }}>↗ rank yours</div>
         </div>
       </div>

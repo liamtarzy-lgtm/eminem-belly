@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/session";
 import { getAdminSongList } from "@/lib/games/queries";
 import { SongImage } from "@/app/_components/SongImage";
 
-export const metadata = { title: "Segment Editor — Eminem Belly" };
+export const metadata = { title: "Segment Editor — Song Ranker" };
 export const dynamic = "force-dynamic";
 
 export default async function SegmentsAdminPage({

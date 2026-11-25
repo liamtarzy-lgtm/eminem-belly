@@ -88,7 +88,7 @@ export default async function SharePage({
     <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
       <header className="mb-6 text-center">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-(--accent-soft)">
-          Eminem · Belly
+          Song · Ranker
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
           {user.name ?? "Someone"}&apos;s ranking
@@ -132,7 +132,7 @@ export default async function SharePage({
       <footer className="mt-10 text-center text-xs text-(--muted)">
         Made with{" "}
         <a href="/" className="text-(--accent-soft) hover:underline">
-          Eminem · Belly
+          Song · Ranker
         </a>{" "}
         — rank Em&apos;s catalog yourself.
       </footer>

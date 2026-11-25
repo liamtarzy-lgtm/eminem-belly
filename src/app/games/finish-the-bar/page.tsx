@@ -1,7 +1,7 @@
 import { GameLayout } from "@/app/_components/games/GameLayout";
 import { FinishTheBar } from "@/app/_components/games/FinishTheBar";
 
-export const metadata = { title: "Finish the Bar — Eminem Belly" };
+export const metadata = { title: "Finish the Bar — Song Ranker" };
 
 export default function FinishTheBarPage() {
   return (

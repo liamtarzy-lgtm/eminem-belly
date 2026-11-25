@@ -18,11 +18,12 @@ const geistMono = Geist_Mono({
 
 const baseUrl =
   process.env.NEXT_PUBLIC_BASE_URL ??
+  (process.env.VERCEL_ENV === "production" ? "https://songranker.com" : undefined) ??
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
-  title: "Eminem Belly — rank Em's catalog",
+  title: "Song Ranker — rank Eminem's catalog",
   description: "Rank Eminem's discography by pairwise comparison.",
 };
 
@@ -48,7 +49,7 @@ export default function RootLayout({
               href="/"
               className="font-bold tracking-tight text-base sm:text-lg shrink-0"
             >
-              Eminem<span className="text-(--accent)"> · </span>Belly
+              Song<span className="text-(--accent)"> · </span>Ranker
             </Link>
             <HeaderNav />
             <HeaderUser />

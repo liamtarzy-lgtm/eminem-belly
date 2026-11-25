@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Games — Eminem Belly" };
+export const metadata = { title: "Games — Song Ranker" };
 
 const GAMES = [
   {
@@ -29,7 +29,7 @@ export default function GamesPage() {
           games
         </div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Eminem · Belly Arcade
+          Song · Ranker Arcade
         </h1>
         <p className="text-sm text-(--muted)">
           Pick a game. High scores save locally per device.

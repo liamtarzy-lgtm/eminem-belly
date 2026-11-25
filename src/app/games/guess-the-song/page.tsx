@@ -2,7 +2,7 @@ import { GameLayout } from "@/app/_components/games/GameLayout";
 import { GuessTheSong } from "@/app/_components/games/GuessTheSong";
 import { getGameSongs, getCatalogForDistractors } from "@/lib/games/queries";
 
-export const metadata = { title: "Guess the Song in 2 Seconds — Eminem Belly" };
+export const metadata = { title: "Guess the Song in 2 Seconds — Song Ranker" };
 export const dynamic = "force-dynamic";
 
 export default async function GuessTheSongPage() {
