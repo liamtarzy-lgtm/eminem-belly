@@ -1,3 +1,4 @@
+import { GoogleAnalytics } from "@next/third-parties/google";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
@@ -58,6 +59,11 @@ export default function RootLayout({
         <main className="flex flex-1 flex-col">{children}</main>
         <NowPlaying />
       </body>
+      {/* GA4 — only loads when NEXT_PUBLIC_GA_ID is set (production). It's
+          inlined at build time, so changing it needs a redeploy. */}
+      {process.env.NEXT_PUBLIC_GA_ID && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+      )}
     </html>
   );
 }
